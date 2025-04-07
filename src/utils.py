@@ -1,23 +1,31 @@
-import re
 import traceback
-
+import json
 import smtplib
 import chardet
-import pandas as pd
-from uuid import uuid4
-from typing import Literal
-from bs4 import BeautifulSoup
-from typing import List, Optional, Tuple, Union
+from pathlib import Path
+from typing import Any, List, Optional, Tuple, Union, Literal
 
 import imaplib
 from email.message import Message
 from email.header import decode_header
 from email.mime.text import MIMEText
 
-from src.parameters import SERVICES_KEYWORDS, FIELDS_ALIAS, FIELDS_ALIAS_REVERSED
 
+def write_json(file_path: Path | str, data: Any) -> None:
+    """Записывает данные в JSON файл с форматированием.
 
-# ---------------------------------------------------------------------------------------------------------------- email
+    Args:
+        file_path: Путь к файлу (строка или объект Path)
+        data: Данные для записи в JSON формате
+
+    Returns:
+        None
+    """
+    file_path = Path(file_path)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(file_path, mode="w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4, ensure_ascii=False)
+
 
 def connect_to_imap(email_user: str, email_pass: str, imap_server: str,
                     imap_port: int = 993) -> Optional[imaplib.IMAP4_SSL]:
@@ -80,17 +88,30 @@ def decode_subject(subject: Optional[str]) -> str:
     return subject_text
 
 
-def extract_text_content(email_message: Message) -> Optional[str]:
-    """Извлекает текстовую часть письма"""
-    if email_message.is_multipart():  # True, если письмо состоит из нескольких частей (текст + HTML + вложения + ..)
-        for part in email_message.walk():  # part: <class 'email.message.Message'>
-            if part.get_content_type() == "text/plain":  # text/plain - обычный текст письма
+def extract_text_content(email_message: Message) -> str | None:
+    """
+    Извлекает текстовую часть из email-сообщения.
+
+    Args:
+        email_message: Объект email-сообщения для обработки.
+
+    Returns:
+        Optional[str]: Текстовая часть письма или None, если текст не найден.
+    """
+    # Проверяем, является ли сообщение многосоставным (multipart): текст + HTML + вложения + ...
+    if email_message.is_multipart():
+        # Проходим по всем частям сообщения с помощью walk()
+        for part in email_message.walk():
+            # Ищем часть с типом text/plain (обычный текст)
+            if part.get_content_type() == "text/plain":
+                # Декодируем содержимое в байты
                 body: bytes = part.get_payload(decode=True)
                 if body:
+                    # Определяем кодировку и преобразуем байты в строку
                     encoding = detect_encoding(body)
-                    decoded: str = body.decode(encoding, errors='ignore')
-                    return decoded
+                    return body.decode(encoding, errors='ignore')
     else:
+        # Обрабатываем случай, если сообщение не многосоставное
         body = email_message.get_payload(decode=True)
         if body:
             encoding = detect_encoding(body)
@@ -98,22 +119,66 @@ def extract_text_content(email_message: Message) -> Optional[str]:
     return None
 
 
-def extract_html_content(email_message: Message) -> Optional[str]:
-    """Извлекает HTML часть письма"""
-    html_content: Optional[bytes] = None
+def extract_html_content(email_message: Message) -> str | None:
+    """
+    Извлекает HTML-часть из email-сообщения.
+
+    Args:
+        email_message: Объект email-сообщения для обработки.
+
+    Returns:
+        Optional[str]: HTML-часть письма или None, если HTML не найден.
+    """
+    # Инициализируем переменную для хранения HTML-контента
+    html_content: bytes | None = None
     if email_message.is_multipart():
+        # Проходим по всем частям сообщения для поиска HTML
         for part in email_message.walk():
             if part.get_content_type() == "text/html":
                 html_content: bytes = part.get_payload(decode=True)
+                # Выходим из цикла после нахождения первой HTML-части
                 break
+    # Если сообщение не многосоставное, проверяем его тип напрямую
     elif email_message.get_content_type() == "text/html":
         html_content: bytes = email_message.get_payload(decode=True)
 
+    # Обрабатываем найденный HTML-контент
     if html_content:
         encoding = detect_encoding(html_content)
         html_decoded: str = html_content.decode(encoding, errors='ignore')
         return html_decoded
     return None
+
+
+def extract_attachments(email_message: Message) -> list[tuple[str, bytes]]:
+    """
+    Извлекает вложения из email-сообщения.
+
+    Args:
+        email_message: Объект email-сообщения для обработки.
+
+    Returns:
+        list[tuple[str, bytes]]: Список кортежей, содержащих имя файла и его содержимое в байтах.
+    """
+    attachments: list[tuple[str, bytes]] = []
+
+    # Проверяем, является ли сообщение многосоставным
+    if not email_message.is_multipart():
+        return attachments  # Возвращаем пустой список, если нет частей
+
+    # Проходим по всем частям сообщения
+    for part in email_message.walk():
+        # Проверяем, является ли часть вложением
+        content_disposition = part.get("Content-Disposition")
+        if content_disposition and "attachment" in content_disposition.lower():
+            filename = part.get_filename()  # Получаем имя файла вложения
+            payload = part.get_payload(decode=True)  # Получаем содержимое вложения
+
+            if filename and payload:
+                # Добавляем кортеж (имя файла, содержимое) в список вложений
+                attachments.append((filename, payload))
+
+    return attachments
 
 
 def send_email(email_text: str,
@@ -158,217 +223,3 @@ def send_email(email_text: str,
     except Exception:
         print(traceback.format_exc())
         return False
-
-
-# --------------------------------------------------------------------------------------------------------------- tables
-
-def find_tables_positions(soup: BeautifulSoup) -> list:
-    """Извлекает из html-структуры (soup) список таблиц (контент, позиция начала, позиция конца) """
-
-    start = 0
-    tables_info = []
-    soup_tables = soup.find_all('table')
-    for table in soup_tables:
-        table_html = str(table)
-        find_ = str(soup).find(table_html, start)
-        if find_ != -1:
-            start = find_
-            end = find_ + len(table_html) - 1
-
-            # исключаем вложенные таблицы
-            end_of_last_table = tables_info[-1]['end'] if tables_info else 0
-            if end_of_last_table <= start:
-                tables_info.append({'table': table_html, 'start': start, 'end': end})
-
-    return tables_info
-
-
-def replace_tables_with_uuid(soup: BeautifulSoup, tables_info: list) -> tuple[list, str]:
-    """
-    Заменяет контент таблицы в html-структуре (soup) на UUID;
-    Принимает на вход soup-объект и tables_info (результат функции find_tables_positions);
-    Добавляет в tables_info ключ "_id"
-    """
-
-    text = str(soup)
-    last_end = 0
-    replacement = ''
-    for i, table in enumerate(tables_info):
-        table['_id'] = str(uuid4())
-        replacement += text[last_end:table['start']] + '\n' + table['_id'] + '\n'
-        last_end = table['end'] + 1
-        if i == len(tables_info) - 1:
-            replacement += text[table['end'] + 1:]
-
-    return tables_info, replacement
-
-
-def replace_uuid_with_tables(replacement: str, tables_info: list):
-    """
-    Обратная функция replace_tables_with_uuid;
-    Принимает на вход replacement и tables_info (результат функции replace_tables_with_uuid);
-    Восстанавливает исходный html до замены таблиц на id
-    """
-
-    _ids = [t['_id'] for t in tables_info]
-    original_tables = [t['table'] for t in tables_info]
-    for _id, original_table in zip(_ids, original_tables):
-        replacement = replacement.replace(_id, original_table)
-    return replacement
-
-
-def html_table_to_df(html_table: str) -> pd.DataFrame:
-    """ Замена стандартной pd.read_html. Разделяет построчно параграфы (в тегах <p>) """
-
-    soup = BeautifulSoup(html_table, 'html.parser')
-    table = soup.find('table')
-
-    rows = []
-    for tr in table.find_all('tr'):
-        cells = []
-        for td in tr.find_all('td'):
-            # Извлекаем текст из всех тегов <p>
-            paragraphs = [p.get_text() for p in td.find_all('p')]
-            # Если найдено более одного абзаца, объединяем с переносами строк
-            if len(paragraphs) > 1:
-                cell_text = "\n".join(paragraphs)
-            elif paragraphs:
-                cell_text = paragraphs[0]
-            else:
-                cell_text = td.get_text(strip=True)
-            cells.append(cell_text)
-        rows.append(cells)
-
-    # raw[0] -> Header
-    df = pd.DataFrame(rows)
-    df.columns = df.iloc[0]
-    df = df.drop(df.index[0])
-    return df
-
-
-def extract_outer_html_tables(html_content: str) -> List[pd.DataFrame]:
-    """Извлекает только верхнеуровневые таблицы из HTML"""
-
-    if not html_content:
-        print('No html_content in extract_outer_html_tables')
-        return []
-
-    try:
-        soup = BeautifulSoup(html_content, "html.parser")
-        top_level_tables: list[str] = []
-
-        # Смотрим только таблицы, у которых нет родительской <table>
-        for table in soup.find_all("table"):
-            if not table.find_parent("table"):
-                top_level_tables.append(str(table))  # Преобразуем обратно в HTML
-
-        # Преобразуем верхнеуровневые таблицы в DataFrame
-        return [html_table_to_df(table) for table in top_level_tables]
-
-    except Exception as e:
-        print(f"Ошибка при извлечении таблиц из HTML: {str(e)}")
-        return []
-
-
-# ------------------------------------------------------------------------------------------------------- postprocessing
-
-def split_html(html_content: str) -> list[str]:
-    regex = (r'(?:.*sent:.*$\s)(?:.*to:.*$\s)(?:.*cc:.*$\s)?(?:.*subject:.*$)'
-             r'|'
-             r'(?:.*отправлено:.*$\s)(?:.*кому:.*$\s)(?:.*копия:.*$\s)?(?:.*тема:.*$)')
-
-    parts = re.split(regex, html_content, flags=re.IGNORECASE | re.MULTILINE)
-
-    return parts
-
-
-# ---------------------------------------------------------------------------------------------------- postprocessing df
-
-def dataframe_is_table_rates(df: pd.DataFrame) -> bool:
-    """
-    Проверяет, является ли DataFrame валидным по следующим критериям:
-    1) Состоит из 3 столбцов
-    2) Имена столбцов == FIELDS_ALIAS
-    """
-
-    if df.shape[1] != 3:
-        return False
-
-    return compare_fields_names(fields_alias=FIELDS_ALIAS,
-                                extracted_fields=list(df.columns))
-
-
-def compare_fields_names(fields_alias: dict, extracted_fields: list) -> bool:
-    extracted_fields = [x.lower().strip() for x in extracted_fields]
-    for field_name, aliases in fields_alias.items():
-        for alias in aliases:
-            alias = alias.lower().strip()
-            if alias in extracted_fields:
-                extracted_fields.remove(alias)
-                break
-    return len(extracted_fields) == 0
-
-
-def postprocess_df(df) -> pd.DataFrame | None:
-    try:
-        df.columns = [c.lower().strip() for c in df.columns]
-        df.columns = [FIELDS_ALIAS_REVERSED[x] for x in df.columns]  # приводим алиасы полей к изначальным наименованиям
-
-        df['ставка'] = df['ставка'].apply(extract_first_number)
-        df['вход'] = df['вход'].apply(extract_number_from_entry)
-        df['наименование'] = df['наименование'].apply(lambda x: service_replace_by_service1C(x, SERVICES_KEYWORDS))
-        return df
-
-    except Exception:
-        print(traceback.format_exc())
-
-
-def extract_first_number(text: str) -> float | None:
-    regex = r'^.*?(\d+(?:\.\d+)?).*$'
-    text = re.sub(r'[^\S\n]', '', text)  # удаление всех пробельных символов кроме \n
-    matches = re.findall(regex, text, flags=re.MULTILINE)
-    if matches:
-        return float(matches[0])
-
-
-def cut_text_before_last_equal(text: str) -> str:
-    last_equal = list(re.finditer(r'=', text))[-1]
-    return text[last_equal.start():]
-
-
-def extract_number_from_entry(text: str) -> float | None:
-    if '=' in text:
-        text = cut_text_before_last_equal(text)
-    return extract_first_number(text)
-
-
-def service_replace_by_service1C(service: str, keyword_dict: dict) -> str:
-    service_lower = service.lower()
-    for key_word, name1C in keyword_dict.items():
-        if key_word in service_lower:
-            return name1C
-    return ''
-
-
-# ---------------------------------------------------------------------------------------------------------------- other
-
-def format_csv_to_table(csv_text):
-    lines = csv_text.strip().split('\n')
-    rows = [line.split(',') for line in lines]
-
-    html = ['<table border="1" style="border-collapse: collapse; padding: 5px;">']
-    for i, row in enumerate(rows):
-        html.append('<tr>')
-        for cell in row:
-            tag = 'th' if i == 0 else 'td'
-            html.append(f'  <{tag}>{cell.strip()}</{tag}>')
-        html.append('</tr>')
-    html.append('</table>')
-
-    return '\n'.join(html)
-
-
-if __name__ == "__main__":
-    # print(compare_fields_names(FIELDS_ALIAS, ['Услуги', 'ВХОД', 'ставка']))
-    print(compare_fields_names(FIELDS_ALIAS, ['Наименование', 'ВХоД', 'ставка', '1']))
-    print(compare_fields_names(FIELDS_ALIAS, ['Услуги', 'ВХОД', 'ставка']))
