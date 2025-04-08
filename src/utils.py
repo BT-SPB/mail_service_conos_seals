@@ -1,3 +1,4 @@
+import re
 import traceback
 import json
 import smtplib
@@ -9,6 +10,9 @@ import imaplib
 from email.message import Message
 from email.header import decode_header
 from email.mime.text import MIMEText
+
+from config import CONFIG
+from src.logger import logger
 
 
 def write_json(file_path: Path | str, data: Any) -> None:
@@ -223,3 +227,66 @@ def send_email(email_text: str,
     except Exception:
         print(traceback.format_exc())
         return False
+
+
+# --- FILES ---
+
+def sanitize_pathname(
+        name: str,
+        is_file: bool = True,
+        parent_dir: str | Path = ".",
+        max_length: int = 50,
+) -> str:
+    """
+    Универсальная функция для очистки имен файлов и директорий.
+
+    Args:
+        name (str): Исходное имя файла или директории
+        is_file (bool): True для файлов, False для директорий
+        parent_dir (str): Родительская директория для проверки конфликтов
+
+    Returns:
+        str: Очищенное уникальное имя
+    """
+    # Заменяем все недопустимые символы на пробелы
+    clean_name = re.sub(r'[<>:"/\\|?*]|\x00-\x1F', " ", name).strip()
+    # Заменяем пробелы на "_"
+    clean_name = re.sub(r"\s+", "_", clean_name)
+
+    # Дополнительная обработка в зависимости от типа (файл или директория)
+    if not is_file:
+        # Для директорий убираем точки в начале и конце
+        clean_name = clean_name.strip('.')
+
+    parent_path = Path(parent_dir)
+
+    # Ограничиваем длину имени
+    if len(clean_name) > max_length:
+        if is_file:
+            path = Path(clean_name)
+            name = path.stem  # Имя без расширения
+            ext = path.suffix  # Расширение с точкой
+            max_name_length = max_length - len(ext)
+            clean_name = name[:max_name_length] + ext
+        else:
+            clean_name = clean_name[:max_length]
+
+    # Проверка на зарезервированные имена (Windows)
+    reserved_names = {'CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4',
+                      'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3',
+                      'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'}
+    if clean_name.upper().split('.')[0] in reserved_names:
+        clean_name = f"_{clean_name}"
+
+    # Проверка на уникальность в родительской директории
+    final_name = clean_name
+    counter = 1
+    while (parent_path / final_name).exists():
+        if is_file:
+            base_name, ext = Path(clean_name).stem, Path(clean_name).suffix
+            final_name = f"{base_name}_{counter}{ext}"
+        else:
+            final_name = f"{clean_name}_{counter}"
+        counter += 1
+
+    return final_name
