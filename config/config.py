@@ -23,21 +23,24 @@ class Config(BaseSettings):
     FILES_DIR: Path = Path(__file__).resolve().parent.parent
 
     IN_FOLDER: Path | None = None
-    # CHECK_FOLDER: Path | None = None
+    EXPORT_FOLDER: Path | None = None
 
     EMAIL_ADDRESS: str | None = None
     EMAIL_PASSWORD: str | None = None
 
+    USER_1C: str | None = None
+    PASSWORD_1C: str | None = None
+
     imap_server: str = "imap.gmail.com"
     imap_port: int = 993
 
-    def setup_directories(self) -> None:
-        """Создает необходимые директории, если они отсутствуют.
+    # File extensions
+    valid_images: set = {".png", ".jpg", ".jpeg"}
+    valid_ext: set = valid_images | {".pdf"}
 
-        Создает папки IN_FOLDER и CHECK_FOLDER в рабочей директории,
-        если они еще не существуют.
-        """
-        for directory in [self.IN_FOLDER]:
+    def setup_directories(self) -> None:
+        """Создает необходимые директории, если они отсутствуют. """
+        for directory in [self.IN_FOLDER, self.EXPORT_FOLDER]:
             directory.mkdir(parents=True, exist_ok=True)
 
     def load_encrypted_settings(self) -> None:
@@ -63,7 +66,7 @@ class Config(BaseSettings):
         try:
             # Инициализация шифровальщика
             fernet = Fernet(crypto_key)
-            with open(self.CONFIG_DIR / "encrypted.env", 'rb') as encrypted_file:
+            with open(self.CONFIG_DIR / "encrypted.env", "rb") as encrypted_file:
                 encrypted_data = encrypted_file.read()
 
             # Расшифровка данных и преобразование в строку
@@ -75,8 +78,11 @@ class Config(BaseSettings):
             load_dotenv(stream=string_stream)
 
             # Установка значений в конфигурацию
-            self.EMAIL_ADDRESS = os.getenv('EMAIL_ADDRESS')
-            self.EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')
+            self.EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
+            self.EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+
+            self.USER_1C = os.getenv("USER_1C")
+            self.PASSWORD_1C = os.getenv("PASSWORD_1C")
 
         except FileNotFoundError:
             logger.print("Не найден файл encrypted.env")
@@ -87,7 +93,7 @@ class Config(BaseSettings):
         """Инициализирует конфигурацию после создания экземпляра."""
         # Установка путей к рабочим директориям
         self.IN_FOLDER = self.FILES_DIR / "IN"
-        # self.CHECK_FOLDER = self.FILES_DIR / "CHECK"
+        self.EXPORT_FOLDER = self.FILES_DIR / "EXPORT"
 
         # Загрузка зашифрованных настроек и создание директорий
         self.load_encrypted_settings()
@@ -99,7 +105,7 @@ class Config(BaseSettings):
         end = "=" * 80
 
         config_dict = self.model_dump(
-            exclude={"EMAIL_PASSWORD"}
+            exclude={"EMAIL_PASSWORD", "PASSWORD_1C"}
         )
 
         params = [f"{k}: {v}" for k, v in config_dict.items()]

@@ -10,14 +10,14 @@ from email.utils import parseaddr, parsedate_to_datetime
 
 from config import CONFIG
 from src.logger import logger
-from src.utils import (
-    write_json,
-    sanitize_pathname,
+from src.utils import write_json, sanitize_pathname
+from src.utils_email import (
     connect_to_imap,
     get_unseen_messages,
     decode_subject,
     extract_text_content,
     extract_attachments,
+    send_email,
 )
 
 
@@ -27,23 +27,23 @@ def process_email_inbox(
         imap_server: str,
         imap_port: int,
 ) -> None:
-    """Проверяет и обрабатывает новые письма в IMAP-ящике.
+    """Обрабатывает новые письма в IMAP-ящике и извлекает вложения.
 
     Args:
-        email_user: Адрес электронной почты пользователя.
-        email_pass: Пароль от почтового ящика.
-        imap_server: Адрес IMAP-сервера.
-        imap_port: Порт IMAP-сервера.
+        email_user: Адрес электронной почты пользователя
+        email_pass: Пароль от почтового ящика
+        imap_server: Адрес IMAP-сервера
+        imap_port: Порт IMAP-сервера
 
     Returns:
-        None
+        None: Функция не возвращает значений, но сохраняет файлы и метаданные на диск.
     """
-    # Подключение к серверу
+    # Установка защищенного соединения с IMAP-сервером
     mail: imaplib.IMAP4_SSL | None = connect_to_imap(
         email_user, email_pass, imap_server, imap_port
     )
     if not mail:
-        logger.print('Нет соединения')
+        logger.print("Не удалось установить соединение с сервером")
         return
 
     try:
@@ -66,9 +66,6 @@ def process_email_inbox(
             # Парсинг email-сообщения
             email_message: Message = email.message_from_bytes(msg_data[0][1])
 
-            # Извлечение html части
-            # html_content: Optional[str] = extract_html_content(email_message)
-
             # Сбор метаданных письма
             email_metadata = {
                 "subject": decode_subject(email_message.get("Subject", "")),
@@ -81,6 +78,7 @@ def process_email_inbox(
             attachments = extract_attachments(email_message)
 
             if attachments:
+                # Генерация уникального имени папки на основе даты и отправителя
                 try:
                     date_time = parsedate_to_datetime(email_metadata['date']).strftime("%y%m%d_%H%M%S")
                 except (ValueError, TypeError):
@@ -88,30 +86,56 @@ def process_email_inbox(
 
                 folder_name = f"{date_time}_{email_metadata['sender']}"
                 folder_name = sanitize_pathname(folder_name, is_file=False, parent_dir=CONFIG.IN_FOLDER)
-
                 folder_path = CONFIG.IN_FOLDER / folder_name
-                folder_path.mkdir(exist_ok=True, parents=True)
 
+                # Список для имен файлов с неподдерживаемыми расширениями
+                unsupported_files: list[str] = []
 
                 # Проходим по всем вложениям
                 for file_name, content in attachments:
+                    file_ext = Path(file_name).suffix
+                    if file_ext not in CONFIG.valid_ext:
+                        unsupported_files.append(file_name)
+                        logger.print(f"Unsupported file: {file_name}")
+                        continue
+
+                    # Создание директории и безопасного имени файла
+                    folder_path.mkdir(exist_ok=True, parents=True)
                     file_name = sanitize_pathname(file_name, is_file=True, parent_dir=folder_path)
                     file_path = folder_path / file_name
 
-                    email_metadata.setdefault("files", []).append(file_name)
-
                     try:
-                        # Записываем содержимое в файл
+                        # Сохраняем файл
                         file_path.write_bytes(content)
-                        logger.print(f"Сохранен файл: {file_path}")
+                        email_metadata.setdefault("files", []).append(file_name)
+                        logger.print(f"Файл сохранен: {file_path}")
                     except OSError as e:
                         logger.print(f"Ошибка при сохранении файла {file_path}: {e}")
 
-                # Сохранение метаданных письма
-                write_json(folder_path / "metadata.json", email_metadata)
+                # Сохранение метаданных, если есть обработанные файлы
+                if email_metadata.get("files"):
+                    write_json(folder_path / "metadata.json", email_metadata)
 
+                # Отправка уведомления на email об неподдерживаемых файлах
+                if unsupported_files:
+                    unsupported_files_text = "\n".join(
+                        f"{i}. {file_name}" for i, file_name in enumerate(unsupported_files, 1))
+                    valid_ext_text = ", ".join(f"'*{ext}'" for ext in CONFIG.valid_ext)
+                    email_text = (
+                        f"В сообщении от {email_metadata['date']} были прикреплены следующие "
+                        f"неподдерживаемые файлы:\n\n{unsupported_files_text}\n\n"
+                        f"Система автораспознавания информации с коносаментов поддерживает "
+                        f"следующие типы файлов: {valid_ext_text}."
+                    )
+                    send_email(
+                        email_text=email_text,
+                        recipient_email=email_metadata["sender"],
+                        subject=f"Автоответ от {email_user}",
+                        email_user=email_user,
+                        email_pass=email_pass,
+                    )
 
-            # Отметить как прочитанное
+            # Отмечаем письмо как прочитанное после успешной обработки
             mail.store(msg_id_str, '+FLAGS', '\\Seen')
 
     except Exception:
@@ -119,6 +143,7 @@ def process_email_inbox(
         raise
 
     finally:
+        # Безопасное завершение соединения
         logger.print("Закрытие соединения с сервером...")
         mail.close()
         mail.logout()
