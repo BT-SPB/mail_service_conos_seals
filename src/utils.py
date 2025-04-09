@@ -254,7 +254,12 @@ def sanitize_pathname(
     clean_name = re.sub(r"\s+", "_", clean_name)
 
     # Дополнительная обработка в зависимости от типа (файл или директория)
-    if not is_file:
+    if is_file:
+        path = Path(clean_name)
+        name = path.stem  # Имя без расширения
+        ext = path.suffix  # Расширение с точкой
+        clean_name = name + ext.lower()
+    else:
         # Для директорий убираем точки в начале и конце
         clean_name = clean_name.strip('.')
 

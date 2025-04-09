@@ -92,13 +92,13 @@ def process_email_inbox(
                 folder_path = CONFIG.IN_FOLDER / folder_name
                 folder_path.mkdir(exist_ok=True, parents=True)
 
-                # Сохранение метаданных письма
-                write_json(folder_path / "metadata.json", email_metadata)
 
                 # Проходим по всем вложениям
                 for file_name, content in attachments:
-                    file_name1 = sanitize_pathname(file_name, is_file=True, parent_dir=folder_path)
-                    file_path = folder_path / file_name1
+                    file_name = sanitize_pathname(file_name, is_file=True, parent_dir=folder_path)
+                    file_path = folder_path / file_name
+
+                    email_metadata.setdefault("files", []).append(file_name)
 
                     try:
                         # Записываем содержимое в файл
@@ -107,9 +107,12 @@ def process_email_inbox(
                     except OSError as e:
                         logger.print(f"Ошибка при сохранении файла {file_path}: {e}")
 
+                # Сохранение метаданных письма
+                write_json(folder_path / "metadata.json", email_metadata)
 
-            # # Отметить как прочитанное
-            # mail.store(msg_id_str, '+FLAGS', '\\Seen')
+
+            # Отметить как прочитанное
+            mail.store(msg_id_str, '+FLAGS', '\\Seen')
 
     except Exception:
         logger.print(f"Произошла ошибка: {traceback.format_exc()}")
