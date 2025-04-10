@@ -20,10 +20,12 @@ class Config(BaseSettings):
 
     # Путь к рабочей директории (можно переопределить в .env)
     # По умолчанию - корень проекта
-    FILES_DIR: Path = Path(__file__).resolve().parent.parent
+    WORK_DIR: Path = Path(__file__).resolve().parent.parent
 
     IN_FOLDER: Path | None = None
-    EXPORT_FOLDER: Path | None = None
+    OUT_OCR_FOLDER: Path | None = None
+    SUCCESS_FOLDER: Path | None = None
+    ERROR_FOLDER: Path | None = None
 
     EMAIL_ADDRESS: str | None = None
     EMAIL_PASSWORD: str | None = None
@@ -40,7 +42,7 @@ class Config(BaseSettings):
 
     def setup_directories(self) -> None:
         """Создает необходимые директории, если они отсутствуют. """
-        for directory in [self.IN_FOLDER, self.EXPORT_FOLDER]:
+        for directory in [self.IN_FOLDER, self.OUT_OCR_FOLDER, self.SUCCESS_FOLDER, self.ERROR_FOLDER]:
             directory.mkdir(parents=True, exist_ok=True)
 
     def load_encrypted_settings(self) -> None:
@@ -92,8 +94,10 @@ class Config(BaseSettings):
     def model_post_init(self, __context) -> None:
         """Инициализирует конфигурацию после создания экземпляра."""
         # Установка путей к рабочим директориям
-        self.IN_FOLDER = self.FILES_DIR / "IN"
-        self.EXPORT_FOLDER = self.FILES_DIR / "EXPORT"
+        self.IN_FOLDER = self.WORK_DIR / "IN"
+        self.OUT_OCR_FOLDER = self.WORK_DIR / "OUT_OCR"
+        self.SUCCESS_FOLDER = self.WORK_DIR / "SUCCESS"
+        self.ERROR_FOLDER = self.WORK_DIR / "ERROR"
 
         # Загрузка зашифрованных настроек и создание директорий
         self.load_encrypted_settings()

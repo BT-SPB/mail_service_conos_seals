@@ -2,8 +2,6 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-# from config import CONFIG
-
 
 class Logger(logging.Logger):
     """Логгер с поддержкой ротации файлов и вывода в консоль.
@@ -89,7 +87,4 @@ class Logger(logging.Logger):
             )
 
 
-# logger = Logger(log_file=CONFIG.FILES_DIR / "log.log")
-logger = Logger(log_file=Path(r"C:\Users\Cherdantsev\Documents\develop\CONOS_FILES\email.log"))
-
-
+logger = Logger(log_file=Path(__file__).resolve().parent.parent / "logs" / "app.log")

@@ -99,7 +99,8 @@ def cup_http_request(
 if __name__ == "__main__":
     CBL = r'TransactionNumberFromBillOfLading'
     BL = r'CustomsTransactionFromBillOfLading'
-    arg = r'MEDUFE573169'
+    arg = r'MEDUFE620994'
+    arg = "SUDUN1NAN013467A"
     print(cup_http_request(CBL, arg))
     print(cup_http_request(BL, arg))
     # print(cup_http_request(BL, arg, kappa=True))

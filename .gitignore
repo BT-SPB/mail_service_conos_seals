@@ -60,5 +60,3 @@ docker-compose.override.yml
 # Исключения
 !.gitignore
 !__init__.py
-
-OUTPUT/
