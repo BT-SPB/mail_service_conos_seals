@@ -35,6 +35,8 @@ class Config(BaseSettings):
 
     imap_server: str = "imap.gmail.com"
     imap_port: int = 993
+    smtp_server: str = "smtp.gmail.com"
+    smtp_port: int = 587
 
     # File extensions
     valid_images: set = {".png", ".jpg", ".jpeg"}

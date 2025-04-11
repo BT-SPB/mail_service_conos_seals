@@ -210,3 +210,30 @@ def transfer_files(
             logger.print(f"Ошибка операции ({operation}): {e} - {file_path}")
         except Exception as e:
             logger.print(f"Неизвестная ошибка: {e} - {file_path}")
+
+
+def is_directory_empty(path: Path | str) -> bool:
+    """
+    Проверяет, является ли указанная директория пустой (не содержит файлов и поддиректорий).
+
+    Args:
+        path: Путь к директории для проверки
+
+    Returns:
+        bool: True, если директория пуста или не существует, False в противном случае
+    """
+    # Преобразуем путь в объект Path, если он передан как строка
+    path = Path(path)
+
+    # Проверяем, существует ли директория
+    if not path.exists() or not path.is_dir():
+        return True
+
+    # Пытаемся получить первый элемент содержимого директории
+    # Если содержимое есть, next() вернет его, и функция вернет False
+    # Если директория пуста, next() вызовет StopIteration, и мы вернем True
+    try:
+        next(path.iterdir())
+        return False
+    except StopIteration:
+        return True

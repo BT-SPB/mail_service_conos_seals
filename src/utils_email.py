@@ -11,8 +11,12 @@ from email.mime.text import MIMEText
 from src.logger import logger
 
 
-def connect_to_imap(email_user: str, email_pass: str, imap_server: str,
-                    imap_port: int = 993) -> Optional[imaplib.IMAP4_SSL]:
+def connect_to_imap(
+        email_user: str,
+        email_pass: str,
+        imap_server: str,
+        imap_port: int
+) -> Optional[imaplib.IMAP4_SSL]:
     """Устанавливает соединение с IMAP сервером и выполняет авторизацию"""
     try:
         mail = imaplib.IMAP4_SSL(imap_server, imap_port)  # Создание SSL соединения
@@ -181,22 +185,22 @@ def send_email(
         subject: str,
         email_user: str,
         email_pass: str,
-        email_format: Literal['plain', 'html'] = "plain",
-        smtp_server: str = "smtp.gmail.com",
-        smtp_port: int = 587
+        smtp_server: str,
+        smtp_port: int,
+        email_format: Literal["plain", "html"] = "plain",
 ) -> None:
     """
     Отправляет email с заданным текстом на указанный адрес
 
     Args:
         email_text: Текст письма
-        email_format: Тип письма plain / html
         recipient_email: Адрес получателя
         subject: Тема письма
         email_user: Адрес отправителя/логин
         email_pass: Пароль отправителя
-        smtp_server: SMTP сервер (по умолчанию Gmail)
-        smtp_port: SMTP порт (по умолчанию 587)
+        smtp_server: SMTP сервер
+        smtp_port: SMTP порт
+        email_format: Тип письма plain / html
 
     Returns:
         bool: Успешность отправки
@@ -214,7 +218,13 @@ def send_email(
             server.login(email_user, email_pass)  # Авторизуемся
             server.send_message(msg)  # Отправляем письмо
 
-        logger.print(f"Отправлен email: {recipient_email}, ТЕМА: {subject}, ТЕКСТ: {email_text}")
+        logger.print(f"\n ИСХОДЯЩИЙ EMAIL:\n"
+                     f"{'-' * 80}"
+                     f"Адрес получателя: {recipient_email}\n"
+                     f"Тема письма: {subject}\n"
+                     f"Текст письма:\n {email_text}\n"
+                     f"{'-' * 80}"
+                     )
 
     except Exception:
         print(traceback.format_exc())

@@ -30,7 +30,12 @@ def main():
         # ЭТАП 2 - ОБРАОТКА ДАННЫХ ПОСЛЕ OCR (можно выделить в отдельную функцию)
         # Проверка наличия директорий с файлами в OUT_OCR_FOLDER
         # Получение списка папок с проверкой наличия metadata.json
-        process_output_ocr()
+        process_output_ocr(
+            email_user=CONFIG.EMAIL_ADDRESS,
+            email_pass=CONFIG.EMAIL_PASSWORD,
+            smtp_server=CONFIG.smtp_server,
+            smtp_port=CONFIG.smtp_port,
+        )
 
         time.sleep(5)
 

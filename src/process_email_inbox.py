@@ -17,7 +17,6 @@ from src.utils_email import (
     decode_subject,
     extract_text_content,
     extract_attachments,
-    send_email,
 )
 
 
@@ -99,7 +98,7 @@ def process_email_inbox(
                     if file_ext not in CONFIG.valid_ext:
                         valid_ext_text = ", ".join(f"'*{ext}'" for ext in CONFIG.valid_ext)
                         metadata["errors"].append(
-                            f"{file_name}: неподдерживаемое расширение файла. Допустимые значения: {valid_ext_text}."
+                            f"{file_name}: Неподдерживаемое расширение файла. Допустимые значения: {valid_ext_text}."
                         )
                         logger.print(f"Неподдерживаемый файл: {file_name}")
                         continue
