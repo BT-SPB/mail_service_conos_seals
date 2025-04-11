@@ -11,32 +11,6 @@ from email.mime.text import MIMEText
 from src.logger import logger
 
 
-def connect_to_imap(
-        email_user: str,
-        email_pass: str,
-        imap_server: str,
-        imap_port: int
-) -> Optional[imaplib.IMAP4_SSL]:
-    """Устанавливает соединение с IMAP сервером и выполняет авторизацию"""
-    try:
-        mail = imaplib.IMAP4_SSL(imap_server, imap_port)  # Создание SSL соединения
-        mail.login(email_user, email_pass)  # Авторизация
-        mail.select("inbox")  # Выбор папки "Входящие"
-        return mail
-    except Exception as e:
-        raise Exception(f"Ошибка подключения к IMAP: {str(e)}")
-
-
-def get_unseen_messages(mail: imaplib.IMAP4_SSL) -> List[bytes]:
-    """Возвращает список ID непрочитанных писем"""
-    status, messages = mail.search(None, 'UNSEEN')  # Поиск непрочитанных писем
-    if status != 'OK':
-        print("Ошибка при поиске писем")
-        return []
-    message_ids: List[bytes] = messages[0].split()  # Разделение строки ID на список
-    return message_ids
-
-
 def detect_encoding(body: bytes) -> str:
     """Определяет кодировку для переданных байтов"""
 

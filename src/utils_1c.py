@@ -99,12 +99,12 @@ def cup_http_request(
         return None
 
 
-if __name__ == "__main__":
-    CBL = r'TransactionNumberFromBillOfLading'
-    BL = r'CustomsTransactionFromBillOfLading'
-    arg = r'MEDUFE620994'
-    arg = "SUDUN1NAN013467A"
-    cup_http_request(CBL, arg)
-    cup_http_request(CBL, arg)
-    cup_http_request(CBL, arg)
-    cup_http_request(BL, arg)
+# if __name__ == "__main__":
+#     CBL = r'TransactionNumberFromBillOfLading'
+#     BL = r'CustomsTransactionFromBillOfLading'
+#     arg = r'MEDUFE620994'
+#     arg = "SUDUN1NAN013467A"
+#     arg = "VX75EA25000897"
+#     cup_http_request(CBL, arg)
+#     cup_http_request(CBL, arg)
+#     cup_http_request(BL, arg)

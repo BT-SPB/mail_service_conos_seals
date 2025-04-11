@@ -118,8 +118,10 @@ def process_output_ocr(
             # Обновляем данные в JSON файле
             json_data.update({
                 "transaction_number": transaction_number_raw[0],
-                "source_file_base64": file_to_base64(source_file),
-                "source_file_ext": source_file.suffix,
+                # "source_file_base64": file_to_base64(source_file),
+                # "source_file_name": source_file.name,
+                "source_file_base64": file_to_base64(r"C:\Users\Cherdantsev\Documents\test.txt"),
+                "source_file_name": "test.txt",
             })
             # Логируем успешную обработку
             logger.info(f"Файл Файл обработан успешно: {source_file}")
