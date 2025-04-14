@@ -5,3 +5,4 @@ pydantic
 pydantic-settings
 requests
 imapclient
+watchdog

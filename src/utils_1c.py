@@ -8,28 +8,40 @@ from requests.auth import HTTPBasicAuth
 from src.logger import logger
 from config import CONFIG
 
+KAPPA_URL = "http://kappa5.group.ru:81/ca/hs/interaction/"
+LOCAL_URL = "http://10.10.0.10:81/ca/hs/interaction/"
 
-def cache_http_requests(func):
-    """ Декоратор для кэширования запросов на основе URL """
 
-    cache = {}
+def cache_http_requests(func: Callable) -> Callable:
+    """
+    Декоратор для кэширования HTTP-запросов на основе аргументов запроса.
+
+    Args:
+        func (Callable): Функция, результат которой необходимо кэшировать.
+
+    Returns:
+        Callable: Обёрнутая функция с кэшированием.
+    """
+
+    cache: dict[str, list | dict | None] = {}
     max_cache_size = 40
 
     @wraps(func)
-    def wrapper(function, *args, **kwargs):
-        # Формируем ключ кэша из функции + "_" + аргументы
-        function_args = r'_'.join(args)
-        url_cache_key = function + r'_' + function_args
+    def wrapper(function: str, *args: str, **kwargs) -> list | dict | None:
+        # Формируем ключ кэша из названия функции и аргументов
+        function_args = "_".join(args)
+        url_cache_key = f"{function}_{function_args}"
 
-        # Проверяем, есть ли результат в кэше для данного URL
+        # Проверка, есть ли результат в кэше
         if url_cache_key in cache:
-            logger.debug("Получение результата из кэша...")
+            logger.debug("Получение результата из кэша.")
             return cache[url_cache_key]
 
-        # Выполняем запрос и сохраняем результат в кэше
+        # Выполнение оригинальной функции
         result = func(function, *args, **kwargs)
         cache[url_cache_key] = result
 
+        # Ограничение размера кэша
         if len(cache) > max_cache_size:
             cache.pop(next(iter(cache)))
 
@@ -40,71 +52,129 @@ def cache_http_requests(func):
 
 @cache_http_requests
 def cup_http_request(
-        function,
-        *args,
-        kappa=False,
-        encode_off=False,
+        function: str,
+        *args: str,
+        kappa: bool = False,
+        encode: bool = True,
         user_1c: str = CONFIG.USER_1C,
         password_1c: str = CONFIG.PASSWORD_1C,
 ) -> list | dict | None:
-    # Определение серверов
-    if kappa:
-        primary_base = r'http://kappa5.group.ru:81/ca/hs/interaction/'
-        secondary_base = r'http://10.10.0.10:81/ca/hs/interaction/'
-    else:
-        primary_base = r'http://10.10.0.10:81/ca/hs/interaction/'
-        secondary_base = r'http://kappa5.group.ru:81/ca/hs/interaction/'
+    """
+    Выполняет GET-запрос к серверу 1С и возвращает результат в формате JSON.
 
-    if encode_off:
-        encode_func: Callable = lambda x: x
-    else:
-        encode_func: Callable = lambda x: base64.urlsafe_b64encode(x.encode()).decode()
+    Функция сначала пытается выполнить запрос к основному серверу, и при ошибке
+    делает повторную попытку на резервный сервер. Поддерживает кодирование
+    параметров запроса в base64 для URL-безопасности.
 
-    function_args = r'/'.join(map(encode_func, args))
+    Args:
+        function: Название вызываемой функции/метода API на сервере 1С
+        *args: Позиционные аргументы, передаваемые в URL
+        kappa: Флаг, определяющий приоритет серверов (основной/резервный)
+        encode: Кодирования аргументов base64
+        user_1c: Логин пользователя для базовой авторизации
+        password_1c: Пароль пользователя для базовой авторизации
 
-    try:
-        # Формируем URL для первого сервера
-        primary_url = primary_base + function + r'/' + function_args
-        logger.debug(f"Попытка запроса: {primary_url}")
+    Returns:
+        list | dict | None: Ответ сервера в формате JSON, если успешен. Иначе — None.
+    """
 
-        # Попытка отправить запрос на первый сервер
-        response = requests.get(primary_url, auth=HTTPBasicAuth(user_1c, password_1c))
+    # Определение порядка серверов: основной и резервный
+    primary_base = KAPPA_URL if kappa else LOCAL_URL
+    secondary_base = LOCAL_URL if kappa else KAPPA_URL
 
-        # Если первый запрос успешен, возвращаем результат
-        if response.status_code == 200:
-            logger.info(f"ЦУП response: {response.json()}")
-            return response.json()
-        else:
-            logger.warning(f"Ошибка при запросе к первому серверу: {response.status_code} - {response.reason}")
-    except Exception as error:
-        logger.error(error)
+    # Выбор функции кодирования: base64 или passthrough
+    encode_func: Callable[[str], str] = (
+        (lambda x: base64.urlsafe_b64encode(x.encode()).decode()) if encode else
+        (lambda x: x)
+    )
 
-    try:
-        # Формируем URL для второго сервера
-        secondary_url = secondary_base + function + r'/' + function_args
-        logger.debug(f"Попытка запроса ко второму серверу: {secondary_url}")
+    # Кодируем аргументы и формируем путь
+    function_args = "/".join(map(encode_func, args))
 
-        # Попытка отправить запрос на второй сервер
-        response = requests.get(secondary_url, auth=HTTPBasicAuth(user_1c, password_1c))
+    # Список URL-адресов в порядке приоритета
+    urls = [
+        f"{primary_base}{function}/{function_args}",
+        f"{secondary_base}{function}/{function_args}"
+    ]
 
-        # Возвращаем результат, если успешен
-        if response.status_code == 200:
-            logger.info(f"ЦУП response: {response.json()}")
-            return response.json()
-        else:
-            logger.warning(f"Ошибка при запросе ко второму серверу: {response.status_code} - {response.reason}")
-            return None
-    except Exception as error:
-        logger.error(error)
-        return None
+    # Пытаемся последовательно выполнить запросы
+    for url in urls:
+        try:
+            logger.debug(f"🌐 Отправка GET-запроса: {url}")
+            response = requests.get(url, auth=HTTPBasicAuth(user_1c, password_1c))
+
+            if response.status_code == 200:
+                logger.info(f"✅ Успешный ответ от сервера: {response.json()}")
+                return response.json()
+            else:
+                logger.warning(f"⚠️ Ошибка {response.status_code} при запросе: {url} - {response.reason}")
+        except Exception as e:
+            logger.error(f"🚨 Исключение при запросе к {url}: {e}")
 
 
-# if __name__ == "__main__":
-#     CBL = r'TransactionNumberFromBillOfLading'
-#     BL = r'CustomsTransactionFromBillOfLading'
-#     arg = r'MEDUFE620994'
-#     arg = "SUDUN1NAN013467A"
-#     arg = "VX75EA25000897"
-#     cup_http_request(CBL, arg)
-#     cup_http_request(CBL, arg)
-#     cup_http_request(BL, arg)
+def send_production_data(
+        data: dict,
+        kappa: bool = False,
+        user_1c: str = CONFIG.USER_1C,
+        password_1c: str = CONFIG.PASSWORD_1C,
+) -> None:
+    """
+    Отправляет производственные данные (в формате JSON) на сервер 1С с авторизацией.
+
+    В зависимости от флага `kappa`, сначала пытается отправить данные на один сервер,
+    при неудаче — повторяет попытку на резервный.
+
+    Args:
+        data: Словарь с данными для отправки (будет сериализован в JSON).
+        kappa: Флаг, определяющий приоритет серверов (основной/резервный)
+        user_1c: Имя пользователя для базовой авторизации.
+        password_1c: Пароль пользователя для базовой авторизации.
+
+    Returns:
+        None
+    """
+    # Название функции
+    function = "SendProductionDataToTransaction"
+    # Определяем порядок серверов в зависимости от флага kappa
+    primary_url = (KAPPA_URL if kappa else LOCAL_URL) + function
+    secondary_url = (LOCAL_URL if kappa else KAPPA_URL) + function
+
+    # Заголовки для передачи JSON с указанием кодировки
+    headers = {"Content-Type": "application/json; charset=utf-8"}
+
+    # Проходим по писку URL-адресов в порядке приоритета
+    for url in [primary_url, secondary_url]:
+        try:
+            logger.debug(f"🌐 Попытка отправки данных на {url}")
+            response = requests.post(
+                url,
+                auth=HTTPBasicAuth(user_1c, password_1c),
+                headers=headers,
+                json=data,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                logger.info(f"✅ Данные успешно отправлены. Ответ: {response.text}")
+                return
+            else:
+                logger.warning(f"⚠️ Ошибка {response.status_code}: {response.text}")
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"🚨 Исключение при отправке на {url}: {e}")
+
+
+if __name__ == "__main__":
+    from src.utils import read_json
+
+    data = read_json(r"C:\Users\Cherdantsev\Documents\develop\CONOS_FILES\test_1c.json")
+    send_production_data(data)
+
+    # CBL = r'TransactionNumberFromBillOfLading'
+    # BL = r'CustomsTransactionFromBillOfLading'
+    # arg = r'MEDUFE620994'
+    # arg = "SUDUN1NAN013467A"
+    # arg = "VX75EA25000897"
+    # cup_http_request(CBL, arg)
+    # cup_http_request(CBL, arg)
+    # cup_http_request(BL, arg)
