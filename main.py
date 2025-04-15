@@ -1,13 +1,11 @@
 import time
-from watchdog.observers import Observer
-
 from threading import Thread
-import signal
 
 from config import CONFIG
 from src.logger import logger
 from src.process_email_inbox import process_email_inbox_simple, EmailMonitor
-from src.process_output_ocr import process_output_ocr, FolderWatcher
+from src.process_output_ocr import process_output_ocr
+from src.folder_watcher import FolderWatcher
 
 
 def main() -> None:
@@ -91,9 +89,6 @@ def main_fallback() -> None:
     Логирует конфигурацию при старте, начало каждого этапа и ошибки, если они возникают.
     Поддерживает корректное завершение при прерывании пользователем (Ctrl+C).
 
-    Args:
-        None
-
     Returns:
         NoReturn: Функция работает бесконечно и не возвращает управление,
             за исключением случаев прерывания.
@@ -152,9 +147,6 @@ def test_email_monitor() -> None:
     независимо от мониторинга папок. Обрабатывает ошибки соединения и прерывания
     пользователем (Ctrl+C) для безопасного завершения.
 
-    Args:
-        None
-
     Returns:
         NoReturn: Функция работает бесконечно и не возвращает управление,
             за исключением случаев прерывания или критических ошибок.
@@ -169,7 +161,7 @@ def test_email_monitor() -> None:
     logger.info("\n" + CONFIG.display_config())
     logger.info("Запущен изолированный мониторинг почты (тестовый режим)")
 
-    # Инициализируем EmailMonitor с параметрами из конфигурац
+    # Инициализируем EmailMonitor
     email_monitor = EmailMonitor(
         email_user=CONFIG.EMAIL_ADDRESS,
         email_pass=CONFIG.EMAIL_PASSWORD,
@@ -201,9 +193,6 @@ def test_folder_monitor() -> None:
     почты. Обрабатывает ошибки наблюдателя и прерывания пользователем (Ctrl+C) для
     безопасного завершения.
 
-    Args:
-        None
-
     Returns:
         NoReturn: Функция работает бесконечно и не возвращает управление,
             за исключением случаев прерывания или критических ошибок.
@@ -228,7 +217,6 @@ def test_folder_monitor() -> None:
             smtp_port=CONFIG.smtp_port,
         )
     )
-    watcher.monitor()
 
     try:
         # Запускаем мониторинг папки

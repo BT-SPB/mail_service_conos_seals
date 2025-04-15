@@ -69,7 +69,7 @@ class EmailMonitor:
         self.server = IMAPClient(self.imap_server, port=self.imap_port, ssl=True)
         self.server.login(self.email_user, self.email_pass)
         self.server.select_folder("INBOX")  # Выбираем папку INBOX для обработки входящих писем
-        logger.info("Подключено к IMAP-серверу")
+        logger.info("🌐 Подключено к IMAP-серверу")
 
     def disconnect(self) -> None:
         """
@@ -115,8 +115,6 @@ class EmailMonitor:
         что позволяет контролировать этот процесс вручную. Пропускает письма с ошибками,
         логируя их, чтобы продолжить обработку остальных.
 
-        Args:
-            None
 
         Returns:
             None

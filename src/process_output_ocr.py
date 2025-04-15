@@ -1,10 +1,5 @@
-import time
 import shutil
 from pathlib import Path
-from typing import Callable
-
-from watchdog.events import FileSystemEventHandler
-from watchdog.observers import Observer
 
 from config import CONFIG
 from src.logger import logger
@@ -16,150 +11,8 @@ from src.utils import (
     sanitize_pathname,
     is_directory_empty,
 )
-from src.utils_1c import cup_http_request
+from src.utils_1c import cup_http_request, send_production_data
 from src.utils_email import send_email
-
-
-class FolderWatcher(FileSystemEventHandler):
-    """Класс для мониторинга изменений в заданной папке и выполнения callback-функции."""
-
-    def __init__(
-            self,
-            folder_path: str | Path,
-            callback: Callable[[], None],
-            periodic_interval: float | int = 120,  # 2 минуты
-            event_delay: float | int = 3
-    ):
-        """Класс для мониторинга изменений в заданной папке и выполнения callback-функции.
-
-        Этот класс отслеживает изменения в указанной директории (создание, изменение файлов)
-        и вызывает callback-функцию по событиям файловой системы с заданной задержкой,
-        а так же периодически через определенные интервалы времени.
-
-        Args:
-            folder_path (str | Path): Путь к директории, которую необходимо мониторить
-            callback (Callable[[], None]): Функция, вызываемая для обработки изменений
-            periodic_interval (float | int): Интервал периодического вызова callback (в секундах).
-                По умолчанию 120 секунд (2 минуты)
-            event_delay (float | int): Задержка перед обработкой событий файловой системы (в секундах).
-                По умолчанию 3 секунды
-
-        Attributes:
-            folder_path (Path): Объект Path для отслеживаемой директории
-            callback (Callable[[], None]): Функция для обработки изменений
-            periodic_interval (float): Интервал периодической обработки
-            event_delay (float): Задержка для обработки событий
-            event_triggered (bool): Флаг, указывающий на наличие необработанного события
-            last_event_time (float): Время последнего зарегистрированного события
-            is_processing (bool): Флаг, указывающий, выполняется ли обработка в данный момент
-            observer (Observer | None): Объект наблюдателя файловой системы
-        """
-        # Приведение входного пути к объекту Path для унификации
-        self.folder_path: Path = Path(folder_path)
-        self.callback: Callable[[], None] = callback
-        self.periodic_interval: float = float(periodic_interval)
-        self.event_delay: float = float(event_delay)
-
-        # Инициализация состояния мониторинга
-        self.event_triggered: bool = False  # Флаг наличия необработанного события
-        self.last_event_time: float = 0.0  # Время последнего события
-        self.is_processing: bool = False  # Флаг текущей обработки
-        self.observer: Observer | None = None  # Будет инициализирован в методе monitor
-
-    def on_any_event(self, event) -> None:
-        """
-        Стандартный метод класса FileSystemEventHandler.
-        Метод вызывается при изменении файловой системы в целевой директории (создание, изменение).
-
-        Игнорирует события удаления файлов и изменения временных файлов (с расширениями .tmp, .part, ~),
-        чтобы избежать ненужной обработки. При валидном событии устанавливает флаг и фиксирует время.
-
-        Args:
-            event (FileSystemEvent): Событие файловой системы, содержащее информацию о типе события
-                и пути к файлу.
-        """
-        # Пропускаем события удаления и временные файлы
-        ignored_extensions = {".tmp", ".part", "~"}
-        if (
-                event.event_type == "deleted"
-                or any(event.src_path.endswith(ext) for ext in ignored_extensions)
-        ):
-            return
-
-        logger.info(f"Обнаружено изменение: {event.src_path} ({event.event_type})")
-        # Устанавливаем флаг события и фиксируем текущее время
-        self.event_triggered = True
-        self.last_event_time = time.time()
-
-    def monitor(self):
-        """Запускает мониторинг директории и обработку изменений.
-
-        Метод настраивает наблюдатель файловой системы (watchdog), запускает его и выполняет
-        обработку изменений:
-        - По событиям файловой системы (с задержкой event_delay).
-        - Периодически (с интервалом periodic_interval), если событий не было.
-        Обработка защищена от параллельного выполнения и включает обработку ошибок.
-
-        Raises:
-            Exception: При критических ошибках в процессе мониторинга или выполнения callback.
-        """
-        # Инициализация и запуск наблюдателя
-        self.observer = Observer()
-        try:
-            # Настраиваем наблюдатель для отслеживания событий в директории (без рекурсии)
-            self.observer.schedule(self, str(self.folder_path), recursive=False)
-            self.observer.start()
-            logger.info(f"Запущен мониторинг директории: {self.folder_path}")
-        except Exception as e:
-            logger.error(f"Ошибка запуска наблюдателя: {e}")
-            return
-
-        try:
-            last_processed_time: float = 0.0
-            while True:
-                current_time = time.time()
-
-                # Пропускаем цикл, если идет обработка, чтобы избежать параллельного выполнения
-                if self.is_processing:
-                    time.sleep(.1)  # Небольшая пауза для снижения нагрузки на CPU
-                    continue
-
-                # Проверяем условия для запуска обработки:
-                # 1. Было событие, и прошло достаточно времени с его фиксации
-                # 2. Прошло достаточно времени для периодической обработки
-                should_process = (
-                                         self.event_triggered and
-                                         current_time - self.last_event_time >= self.event_delay
-                                 ) or (current_time - last_processed_time >= self.periodic_interval)
-
-                if should_process:
-                    logger.info("Запуск обработки (по событию или таймеру)")
-                    self.is_processing = True
-                    try:
-                        # Выполняем callback для обработки изменений
-                        self.callback()
-                    except Exception as e:
-                        # Логируем ошибки callback, чтобы они не прерывали мониторинг
-                        logger.error(f"Ошибка в callback: {type(e).__name__}: {e}")
-                    finally:
-                        # Сбрасываем флаги и обновляем время обработки
-                        self.event_triggered = False
-                        self.is_processing = False
-                        last_processed_time = current_time
-
-                # Небольшая пауза для предотвращения чрезмерной нагрузки на CPU
-                time.sleep(.1)
-
-        except KeyboardInterrupt:
-            logger.info("Мониторинг остановлен пользователем")
-        except Exception as e:
-            logger.error(f"Критическая ошибка в мониторинге: {type(e).__name__}: {e}")
-        finally:
-            # Гарантируем корректное завершение наблюдателя
-            if self.observer:
-                self.observer.stop()
-                self.observer.join()
-            logger.info("Мониторинг директории завершен")
 
 
 def process_output_ocr(
@@ -184,28 +37,28 @@ def process_output_ocr(
     Returns:
         None: Функция не возвращает значений, но изменяет файловую систему и отправляет email.
     """
-    # Получение списка директорий с проверкой наличия metadata.json
-    try:
-        folders_for_processing: list[Path] = [
-            folder for folder in CONFIG.OUT_OCR_FOLDER.iterdir()
-            if folder.is_dir() and (folder / "metadata.json").exists()
-        ]
+    # Получаем список директорий с файлом metadata.json для обработки
+    folders_for_processing: list[Path] = [
+        folder for folder in CONFIG.OUT_OCR_FOLDER.iterdir()
+        if folder.is_dir() and (folder / "metadata.json").is_file()
+    ]
 
-        if folders_for_processing:
-            logger.info(f"Обнаружено директорий для обработки: {len(folders_for_processing)}")
-        else:
-            logger.info("Директории для обработки не найдены")
-            return
+    # Логируем информацию о найденных директориях
+    if folders_for_processing:
+        logger.info(f"🔍 Обнаружено директорий для обработки: {len(folders_for_processing)}")
+    else:
+        logger.info("🗿 Директории для обработки не найдены")
+        return
 
-        # Последовательно обрабатываем каждую директорию
-        for folder in folders_for_processing:
-            # Чтение метаданных из файла metadata.json
-            # Метаданные содержат информацию о файлах и ошибках
+    # Последовательно обрабатываем каждую директорию
+    for folder in folders_for_processing:
+        try:
+            # Читаем метаданные из JSON-файла, содержащего информацию о файлах и ошибках
             metadata: dict = read_json(folder / "metadata.json")
             success_flag: bool = False  # Флаг успешной обработки хотя бы одного файла
 
             # Формирование путей для папок ошибок и успешной обработки.
-            # Используем sanitize_pathname для безопасных имен директорий
+            # Используем sanitize_pathname для создания безопасных имен директорий
             error_folder = CONFIG.ERROR_FOLDER / sanitize_pathname(
                 folder.name, is_file=False, parent_dir=CONFIG.ERROR_FOLDER
             )
@@ -213,21 +66,21 @@ def process_output_ocr(
                 folder.name, is_file=False, parent_dir=CONFIG.SUCCESS_FOLDER
             )
 
-            # Обрабатываем файлы, указанные в метаданных
+            # Обрабатываем файлы (исходный и JSON), указанные в метаданных
             for source_file_name, json_file_name in metadata["files"]:
                 source_file: Path = folder / source_file_name
                 json_file: Path = folder / json_file_name
 
                 # Проверяем существование исходного файла
-                if not source_file.exists():
-                    logger.warning(f"Отсутствует исходный файл {source_file} из metadata.json")
+                if not source_file.is_file():
+                    logger.warning(f"❌ Отсутствует исходный файл {source_file} из metadata.json")
                     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания.")
                     transfer_files([source_file, json_file], error_folder, "move")
                     continue
 
                 # Проверяем существование JSON файла
-                if not json_file.exists():
-                    logger.info(f"Отсутствует json file {json_file}")
+                if not json_file.is_file():
+                    logger.info(f"⚠️ Отсутствует JSON-файл {json_file}")
                     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания.")
                     transfer_files([source_file, json_file], error_folder, "move")
                     continue
@@ -242,57 +95,105 @@ def process_output_ocr(
                             for cont in json_data["containers"]
                         )
                 ):
-                    logger.info(f"Отсутствуют обязательные поля в {json_file}")
+                    logger.info(f"⚠️ Отсутствуют обязательные поля в {json_file}")
                     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания.")
                     transfer_files([source_file, json_file], error_folder, "move")
                     continue
 
-                # Запрос номера транзакции из ЦУП
-                transaction_number_raw = cup_http_request(
+                # Запрашиваем номер транзакции из ЦУП по коносаменту
+                # Пример получаемого значения: ["АА-0095444 от 14.04.2025"]
+                transaction_number_raw: list[str] = cup_http_request(
                     "TransactionNumberFromBillOfLading", json_data["bill_of_lading"]
                 )
                 if not (transaction_number_raw and isinstance(transaction_number_raw, list)):
-                    logger.info(
-                        f"Не удалось получить номер транзакции для коносамента "
-                        f"{json_data['bill_of_lading']} из ЦУП: {json_file}"
-                    )
-                    metadata["errors"].append(
-                        f"{source_file_name}: Ошибка распознавания. "
-                        f"Не удалось получить номер транзакции из ЦУП."
-                    )
+                    warning_message = "Не удалось получить номер транзакции из ЦУП"
+                    logger.warning(f"❌ {warning_message}: {json_data['bill_of_lading']} ({json_file})")
+                    metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
                     transfer_files([source_file, json_file], error_folder, "move")
                     continue
 
-                # Обновляем данные в JSON файле
+                # Извлекаем последний номер транзакции (самый новый по дате)
+                transaction_number: str = transaction_number_raw[-1]
+                # Запрашиваем номера контейнеров по номеру транзакции
+                container_numbers_cup: list[str] = cup_http_request(
+                    "GetTransportPositionNumberByTransactionNumber",
+                    # Берем только часть с номером "АА-0095444" игнорируя "от 14.04.2025"
+                    transaction_number.split()[0],
+                    encode=False
+                )
+
+                # Обновляем JSON-данные дополнительной информацией
                 json_data.update({
-                    "transaction_number": transaction_number_raw[0],
+                    "transaction_number": transaction_number,
                     "source_file_base64": file_to_base64(source_file),
                     "source_file_name": source_file.name,
                 })
-                # Логируем успешную обработку
-                logger.info(f"Файл Файл обработан успешно: {source_file}")
-                # Сохранение обновленного JSON
+                # Сохраняем обновленный JSON-файл
                 write_json(json_file, json_data)
-                # Перемещение файлов в папку успешной обработки
+
+                # Проверяем успешность получения номеров контейнеров из ЦУП
+                if not container_numbers_cup:
+                    warning_message = "Не удалось получить номера контейнеров по номеру сделки из ЦУП"
+                    logger.warning(f"❌ {warning_message}: {transaction_number} ({source_file})")
+                    metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
+                    transfer_files([source_file, json_file], error_folder, "move")
+                    continue
+
+                # Сравниваем номера контейнеров из OCR и ЦУП
+                container_numbers_cup_set: set[str] = set(container_numbers_cup)
+                container_numbers_ocr_set: set[str] = {cont.get("container") for cont in json_data.get("containers")}
+
+                # Проверяем, есть ли пересечение между наборами номеров контейнеров
+                if not container_numbers_cup_set & container_numbers_ocr_set:
+                    warning_message = "Номера контейнеров из OCR не пересекаются с номерами из ЦУП"
+                    logger.warning(f"❌ {warning_message}: {transaction_number} ({source_file})")
+                    metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
+                    transfer_files([source_file, json_file], error_folder, "move")
+                    continue
+
+                # Проверяем наличие недостающих контейнеров
+                container_numbers_difference = container_numbers_ocr_set - container_numbers_cup_set
+                if container_numbers_difference:
+                    # Отправляем сообщение, но не прерываем цикл, так как
+                    # некоторые контейнеры были успешно распознаны
+                    warning_message = (f"Были распознаны номера контейнеров, которые отсуствуют в ЦУП: "
+                                       f"{container_numbers_difference}")
+                    logger.warning(f"❌ {warning_message}: {transaction_number} ({source_file})")
+                    metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
+                    transfer_files([source_file, json_file], error_folder, "move")
+
+                # Отправляем номера пломб в ЦУП
+                # При неудаче логируем
+                # if not send_production_data(json_data):
+                #     warning_message = f"Не удалось загрузить номера пломб в ЦУП"
+                #     logger.warning(f"❌ {warning_message}: {json_file}")
+                #     metadata["errors"].append(f"{source_file_name}: Ошибка. {warning_message}")
+                #     transfer_files([source_file, json_file], error_folder, "move")
+                #     continue
+
+                # Логируем успешную обработку и перемещаем файлы в папку успешной обработки
+                logger.info(f"✔️ Файл Файл обработан успешно: {source_file}")
                 transfer_files([source_file, json_file], success_folder, "move")
                 success_flag = True
 
             # Сохранение обновленных метаданных после обработки всех файлов в директории
             write_json(folder / "metadata.json", metadata)
 
-            # Обработка ошибок: копирование метаданных и отправка уведомления на email отправителя
+            # Обрабатываем ошибки: копируем/перемещаем метаданные и отправляем уведомления на email отправителя
             if metadata["errors"]:
-                transfer_files(folder / "metadata.json", error_folder, "copy2" if success_flag else "move")
+                # Определяем действие с метаданными: копирование или перемещение
+                metadata_action = "copy2" if success_flag else "move"
+                transfer_files(folder / "metadata.json", error_folder, metadata_action)
 
+                # Формируем текст письма с перечислением ошибок
                 error_files_text = "\n".join(
-                    f"    {i}.  {error_file}"
-                    for i, error_file in enumerate(metadata["errors"], 1)
+                    f"    {i}.  {error}"
+                    for i, error in enumerate(metadata["errors"], 1)
                 )
                 email_text = (
-                    f"В сообщении от {metadata['date']} среди прикрепленных файлов "
-                    f"следующие не удалось распознать:\n"
+                    f"В сообщении от {metadata['date']} следующие файлы не удалось распознать:\n"
                     f"{error_files_text}\n\n"
-                    f"Копии данных файлов можно найти по ссылке: {error_folder}"
+                    f"Копии файлов доступны по пути: {error_folder}"
                 )
                 send_email(
                     email_text=email_text,
@@ -305,21 +206,22 @@ def process_output_ocr(
                     email_format="plain"
                 )
 
-            # Перемещение метаданных в папку успешной обработки, если были успешные файлы
+            # Если есть успешные файлы, перемещаем метаданные в папку успеха
             if success_flag:
                 transfer_files(folder / "metadata.json", success_folder, "move")
 
-            # Очищаем директорию, перемещая остаточные файлы или удаляя пустую папку.
+            # Очищаем директорию: удаляем, если пуста, или перемещаем остатки
             if is_directory_empty(folder):
                 folder.rmdir()
-                logger.info(f"Удалена пустая директория: {folder}")
+                logger.info(f"✔️ Удалена пустая директория: {folder}")
             else:
                 residual_destination = error_folder / f"residual_files"
                 shutil.move(folder, residual_destination)
                 logger.warning(
-                    f"В директории {folder.name} остались необработанные файлы. "
-                    f"Перемещены в {residual_destination} для ручной проверки."
+                    f"❗❗❗ Остались необработанные файлы в {folder.name}. "
+                    f"Перемещены в {residual_destination} для ручной проверки"
                 )
 
-    except Exception as e:
-        logger.error(f"Критическая ошибка в process_output_ocr: {e}")
+        except Exception as e:
+            logger.error(f"⛔ Ошибка при обработке директории {folder}: {e}")
+            continue

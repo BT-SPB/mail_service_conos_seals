@@ -1,9 +1,7 @@
 import traceback
-import smtplib
 import chardet
 from typing import List, Optional, Tuple, Union, Literal
 
-import imaplib
 from email.message import Message
 from email.header import decode_header
 from email.mime.text import MIMEText

@@ -96,9 +96,9 @@ class Config(BaseSettings):
     def model_post_init(self, __context) -> None:
         """Инициализирует конфигурацию после создания экземпляра."""
         # Установка путей к рабочим директориям
-        self.IN_FOLDER = self.WORK_DIR / "IN"
-        self.OUT_OCR_FOLDER = self.WORK_DIR / "OUT_OCR"
-        self.SUCCESS_FOLDER = self.WORK_DIR / "SUCCESS"
+        self.IN_FOLDER = self.WORK_DIR / "WORKFLOW" / "IN"
+        self.OUT_OCR_FOLDER = self.WORK_DIR / "WORKFLOW" / "OUT_OCR"
+        self.SUCCESS_FOLDER = self.WORK_DIR / "WORKFLOW" / "SUCCESS"
         self.ERROR_FOLDER = self.WORK_DIR / "ERROR"
 
         # Загрузка зашифрованных настроек и создание директорий

@@ -1,7 +1,7 @@
 from typing import Callable
 from functools import wraps
-
 import base64
+
 import requests
 from requests.auth import HTTPBasicAuth
 
@@ -34,7 +34,7 @@ def cache_http_requests(func: Callable) -> Callable:
 
         # Проверка, есть ли результат в кэше
         if url_cache_key in cache:
-            logger.debug("Получение результата из кэша.")
+            logger.debug("💾 Получение результата из кэша.")
             return cache[url_cache_key]
 
         # Выполнение оригинальной функции
@@ -54,7 +54,7 @@ def cache_http_requests(func: Callable) -> Callable:
 def cup_http_request(
         function: str,
         *args: str,
-        kappa: bool = False,
+        kappa: bool = True,
         encode: bool = True,
         user_1c: str = CONFIG.USER_1C,
         password_1c: str = CONFIG.PASSWORD_1C,
@@ -101,15 +101,19 @@ def cup_http_request(
     for url in urls:
         try:
             logger.debug(f"🌐 Отправка GET-запроса: {url}")
-            response = requests.get(url, auth=HTTPBasicAuth(user_1c, password_1c))
+            response = requests.get(
+                url,
+                auth=HTTPBasicAuth(user_1c, password_1c),
+                timeout=10
+            )
 
             if response.status_code == 200:
-                logger.info(f"✅ Успешный ответ от сервера: {response.json()}")
+                logger.info(f"✔️ Успешный ответ от сервера: {response.json()}")
                 return response.json()
             else:
                 logger.warning(f"⚠️ Ошибка {response.status_code} при запросе: {url} - {response.reason}")
         except Exception as e:
-            logger.error(f"🚨 Исключение при запросе к {url}: {e}")
+            logger.error(f"⛔ Исключение при запросе к {url}: {e}")
 
 
 def send_production_data(
@@ -117,7 +121,7 @@ def send_production_data(
         kappa: bool = False,
         user_1c: str = CONFIG.USER_1C,
         password_1c: str = CONFIG.PASSWORD_1C,
-) -> None:
+) -> bool:
     """
     Отправляет производственные данные (в формате JSON) на сервер 1С с авторизацией.
 
@@ -164,7 +168,7 @@ def send_production_data(
         password_1c: Пароль пользователя для базовой авторизации
 
     Returns:
-        None
+        True - при успешной отправке данных на сервер. False - при неудаче.
     """
     # Название функции
     function = "SendProductionDataToTransaction"
@@ -190,26 +194,34 @@ def send_production_data(
             )
 
             if response.status_code == 200:
-                logger.info(f"✅ Данные успешно отправлены. Ответ: {response.text}")
-                return
+                logger.info(f"✔️ Данные успешно отправлены. Ответ: {response.text}")
+                return True
             else:
                 logger.warning(f"⚠️ Ошибка {response.status_code}: {response.text}")
 
         except requests.exceptions.RequestException as e:
-            logger.warning(f"🚨 Исключение при отправке на {url}: {e}")
+            logger.warning(f"⛔ Исключение при отправке на {url}: {e}")
+
+    return False
 
 
 if __name__ == "__main__":
-    from src.utils import read_json
+    # from src.utils import read_json
+    #
+    # data = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS\test_1c.json")
+    # send_production_data(data)
 
-    data = read_json(r"C:\Users\Cherdantsev\Documents\develop\CONOS_FILES\test_1c.json")
-    send_production_data(data)
+    BL = r'TransactionNumberFromBillOfLading'
+    arg1 = r'MEDUFE573177'
+    # arg2 = "SUDUN1NAN013467A"
+    # arg3 = "VX75EA25000897"
+    cup_http_request(BL, arg1)
+    # cup_http_request(BL, arg1)
+    # cup_http_request(BL, arg2)
+    # cup_http_request(BL, arg3)
 
-    # CBL = r'TransactionNumberFromBillOfLading'
-    # BL = r'CustomsTransactionFromBillOfLading'
-    # arg = r'MEDUFE620994'
-    # arg = "SUDUN1NAN013467A"
-    # arg = "VX75EA25000897"
-    # cup_http_request(CBL, arg)
-    # cup_http_request(CBL, arg)
-    # cup_http_request(BL, arg)
+    func = "GetTransportPositionNumberByTransactionNumber"
+    arg1 = "НОВ-124370 от 31.03.2025"
+    arg2 = "НОВ-124373 от 01.04.2025"
+    cup_http_request(func, arg1.split()[0], encode=False)
+    cup_http_request(func, arg2.split()[0], encode=False)
