@@ -187,10 +187,10 @@ def send_email(
         msg['To'] = recipient_email
 
         # Устанавливаем соединение с SMTP сервером
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
-            server.starttls()  # Запускаем шифрование
-            server.login(email_user, email_pass)  # Авторизуемся
-            server.send_message(msg)  # Отправляем письмо
+        # with smtplib.SMTP(smtp_server, smtp_port) as server:
+        #     server.starttls()  # Запускаем шифрование
+        #     server.login(email_user, email_pass)  # Авторизуемся
+        #     server.send_message(msg)  # Отправляем письмо
 
         logger.print(f"\n ИСХОДЯЩИЙ EMAIL:\n"
                      f"{'-' * 80}"
