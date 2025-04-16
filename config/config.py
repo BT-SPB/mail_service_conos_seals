@@ -38,6 +38,17 @@ class Config(BaseSettings):
     smtp_server: str = "smtp.gmail.com"
     smtp_port: int = 587
 
+    # Список email-адресов для отправки уведомлений о событиях (успехи, ошибки)
+    notification_emails: list[str] = [
+        "vpon@sdrzbt.ru",  # Пантелеева Елена
+        "oga@sdrzbt.ru",  # Ганенко Олег
+        "aby@sdrzbt.ru",  # Быстрова Арина
+    ]
+
+    # True - уведомления отправляются при успехе и ошибках
+    # False — только при ошибках.
+    enable_success_notifications: bool = True
+
     # File extensions
     valid_images: set = {".png", ".jpg", ".jpeg"}
     valid_ext: set = valid_images | {".pdf"}

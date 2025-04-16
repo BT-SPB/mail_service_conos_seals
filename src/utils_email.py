@@ -1,12 +1,40 @@
+import smtplib
 import traceback
 import chardet
-from typing import List, Optional, Tuple, Union, Literal
+from typing import Literal, List, Optional, Tuple, Union
+from collections.abc import Sequence
+from zoneinfo import ZoneInfo
 
 from email.message import Message
 from email.header import decode_header
 from email.mime.text import MIMEText
+from email.utils import parsedate_to_datetime
 
 from src.logger import logger
+
+
+def convert_email_date_to_moscow(
+        date_mail: str,
+        fmt: str = "%Y-%m-%d %H:%M:%S %Z"
+) -> str:
+    """
+    Преобразует строку с датой из заголовка email в строку с датой и временем по Москве.
+
+    Args:
+        - date_mail: Строка даты из заголовка письма (email_message.get("Date"))
+        - fmt: Формат выходной строки (по умолчанию "%Y-%m-%d %H:%M:%S %Z")
+
+    Returns:
+        str: Строка с датой и временем в московском часовом поясе
+    """
+    try:
+        dt = parsedate_to_datetime(date_mail)
+        moscow_dt = dt.astimezone(ZoneInfo("Europe/Moscow"))
+        return moscow_dt.strftime(fmt)
+    except Exception as e:
+        print(e)
+        print(date_mail)
+        return "Unknown date"
 
 
 def detect_encoding(body: bytes) -> str:
@@ -153,7 +181,7 @@ def extract_attachments(email_message: Message) -> list[tuple[str, bytes]]:
 
 def send_email(
         email_text: str,
-        recipient_email: str,
+        recipient_emails: str | Sequence[str],
         subject: str,
         email_user: str,
         email_pass: str,
@@ -162,41 +190,68 @@ def send_email(
         email_format: Literal["plain", "html"] = "plain",
 ) -> None:
     """
-    Отправляет email с заданным текстом на указанный адрес
+    Отправляет email с заданным текстом одному или нескольким получателям.
+
+    Эта функция поддерживает отправку писем как одному адресату, так и списку
+    адресатов через SMTP-сервер с использованием TLS-шифрования. Логирует
+    успешные отправки и обрабатывает ошибки, возвращая статус выполнения.
 
     Args:
         email_text: Текст письма
-        recipient_email: Адрес получателя
+        recipient_emails: Адрес получателя или список адресов получателей
         subject: Тема письма
-        email_user: Адрес отправителя/логин
-        email_pass: Пароль отправителя
-        smtp_server: SMTP сервер
-        smtp_port: SMTP порт
-        email_format: Тип письма plain / html
+        email_user: Адрес отправителя (используется для авторизации)
+        email_pass: Пароль отправителя для авторизации на SMTP-сервере
+        smtp_server: Адрес SMTP-сервера (например, "smtp.gmail.com")
+        smtp_port: Порт SMTP-сервера (обычно 587 для TLS)
+        email_format: Формат письма ("plain" для обычного текста или "html")
 
     Returns:
-        bool: Успешность отправки
+        None
     """
+    # Нормализация входных данных: преобразование строки в список, если передан один адрес
+    recipients = (
+        [recipient_emails]
+        if isinstance(recipient_emails, str)
+        else recipient_emails
+    )
+
+    # Проверка корректности списка получателей
+    if not recipients or not all(isinstance(email, str) and email for email in recipients):
+        logger.error(f"Некорректный список получателей: {recipients}")
+        return
+
     try:
-        # Создаем объект письма
+        # Создание объекта письма с указанным форматом и кодировкой UTF-8
         msg = MIMEText(email_text, email_format, 'utf-8')
         msg['Subject'] = subject
-        msg['From'] = email_user
-        msg['To'] = recipient_email
 
-        # Устанавливаем соединение с SMTP сервером
-        # with smtplib.SMTP(smtp_server, smtp_port) as server:
-        #     server.starttls()  # Запускаем шифрование
-        #     server.login(email_user, email_pass)  # Авторизуемся
-        #     server.send_message(msg)  # Отправляем письмо
+        # # Установка соединения с SMTP-сервером с использованием контекстного менеджера
+        # with smtplib.SMTP(smtp_server, smtp_port, timeout=10) as server:
+        #     # Активация TLS-шифрования для безопасной передачи данных
+        #     server.starttls()
+        #     # Аутентификация на сервере с использованием логина и пароля
+        #     server.login(email_user, email_pass)
+        #     # Отправка письма всем получателям
+        #     server.send_message(msg, from_addr=email_user, to_addrs=recipients)
 
-        logger.print(f"\n ИСХОДЯЩИЙ EMAIL:\n"
-                     f"{'-' * 80}"
-                     f"Адрес получателя: {recipient_email}\n"
-                     f"Тема письма: {subject}\n"
-                     f"Текст письма:\n {email_text}\n"
-                     f"{'-' * 80}"
-                     )
+        # Логирование успешной отправки письма
+        logger.info(
+            f"\nИСХОДЯЩИЙ EMAIL:\n"
+            f"{'-' * 80}\n"
+            f"Адрес(а) получателя(ей): {', '.join(recipients)}\n"
+            f"Тема письма: {subject}\n"
+            f"Текст письма:\n{email_text}\n"
+            f"{'-' * 80}"
+        )
 
-    except Exception:
-        print(traceback.format_exc())
+    except smtplib.SMTPException as smtp_error:
+        # Обработка специфичных ошибок SMTP (например, неверные учетные данные)
+        logger.error(f"Ошибка SMTP при отправке письма: {str(smtp_error)}")
+        logger.debug(f"Полная трассировка ошибки:\n{traceback.format_exc()}")
+        return
+    except Exception as e:
+        # Обработка остальных возможных ошибок
+        logger.error(f"Неожиданная ошибка при отправке письма: {str(e)}")
+        logger.debug(f"Полная трассировка ошибки:\n{traceback.format_exc()}")
+        return

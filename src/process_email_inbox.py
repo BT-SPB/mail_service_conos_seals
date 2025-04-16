@@ -5,7 +5,7 @@ import traceback
 from pathlib import Path
 from datetime import datetime
 from email.message import Message
-from email.utils import parseaddr, parsedate_to_datetime
+from email.utils import parseaddr
 
 from imapclient import IMAPClient
 
@@ -13,6 +13,7 @@ from config import CONFIG
 from src.logger import logger
 from src.utils import write_json, sanitize_pathname
 from src.utils_email import (
+    convert_email_date_to_moscow,
     decode_subject,
     extract_text_content,
     extract_attachments,
@@ -147,7 +148,8 @@ class EmailMonitor:
                         "date": email_message.get("Date", "Unknown date"),
                         "text_content": extract_text_content(email_message) or "No text content",
                         "files": [],
-                        "errors": []
+                        "errors": [],
+                        "successes": [],
                     }
 
                     # Извлечение и обработка вложений
@@ -162,13 +164,8 @@ class EmailMonitor:
                     # Обработка вложений при их наличии
                     logger.info(f"В письме от {metadata['sender']} найдено вложений: {len(attachments)}")
 
-                    # Формирование уникального имени папки на основе даты и отправителя
-                    try:
-                        # По возможности в качестве даты и времени берем информацию из метаданных
-                        date_time = parsedate_to_datetime(metadata['date']).strftime("%y%m%d_%H%M%S")
-                    except (ValueError, TypeError):
-                        # Если в метаданных отсутствует дата отправки, то берем текущую дату и время
-                        date_time = datetime.now().strftime("%y%m%d_%H%M%S")
+                    # Формирование уникального имени папки на основе даты и времени отправки письма
+                    date_time = convert_email_date_to_moscow(metadata["date"], "%y%m%d_%H%M%S")
 
                     folder_path = CONFIG.IN_FOLDER / sanitize_pathname(
                         name=f"{date_time}_{metadata['sender']}",

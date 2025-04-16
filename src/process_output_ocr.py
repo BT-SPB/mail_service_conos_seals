@@ -12,7 +12,7 @@ from src.utils import (
     is_directory_empty,
 )
 from src.utils_1c import cup_http_request, send_production_data
-from src.utils_email import send_email
+from src.utils_email import send_email, convert_email_date_to_moscow
 
 
 def process_output_ocr(
@@ -102,51 +102,52 @@ def process_output_ocr(
 
                 # Запрашиваем номер транзакции из ЦУП по коносаменту
                 # Пример получаемого значения: ["АА-0095444 от 14.04.2025"]
-                transaction_number_raw: list[str] = cup_http_request(
+                transaction_numbers: list[str] = cup_http_request(
                     "TransactionNumberFromBillOfLading", json_data["bill_of_lading"]
                 )
-                if not (transaction_number_raw and isinstance(transaction_number_raw, list)):
+                if not (transaction_numbers and isinstance(transaction_numbers, list)):
                     warning_message = "Не удалось получить номер транзакции из ЦУП"
                     logger.warning(f"❌ {warning_message}: {json_data['bill_of_lading']} ({json_file})")
                     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
                     transfer_files([source_file, json_file], error_folder, "move")
                     continue
 
-                # Извлекаем последний номер транзакции (самый новый по дате)
-                transaction_number: str = transaction_number_raw[-1]
-                # Запрашиваем номера контейнеров по номеру транзакции
-                container_numbers_cup: list[str] = cup_http_request(
-                    "GetTransportPositionNumberByTransactionNumber",
-                    # Берем только часть с номером "АА-0095444" игнорируя "от 14.04.2025"
-                    transaction_number.split()[0],
-                    encode=False
-                )
-
                 # Обновляем JSON-данные дополнительной информацией
                 json_data.update({
-                    "transaction_number": transaction_number,
+                    "transaction_numbers": transaction_numbers,
                     "source_file_base64": file_to_base64(source_file),
-                    "source_file_name": source_file.name,
+                    "source_file_name": f"КС_{json_data['bill_of_lading']}{source_file.suffix}",
                 })
                 # Сохраняем обновленный JSON-файл
                 write_json(json_file, json_data)
 
+                # Запрашиваем номера контейнеров по номеру транзакции
+                container_numbers_cup: list[list[str]] = [
+                    cup_http_request(
+                        "GetTransportPositionNumberByTransactionNumber",
+                        # Берем только часть с номером "АА-0095444" игнорируя "от 14.04.2025"
+                        transaction_number.split()[0],
+                        encode=False
+                    )
+                    for transaction_number in transaction_numbers
+                ]
+
                 # Проверяем успешность получения номеров контейнеров из ЦУП
-                if not container_numbers_cup:
+                if not all(container_numbers_cup):
                     warning_message = "Не удалось получить номера контейнеров по номеру сделки из ЦУП"
-                    logger.warning(f"❌ {warning_message}: {transaction_number} ({source_file})")
+                    logger.warning(f"❌ {warning_message}: {transaction_numbers} ({source_file})")
                     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
                     transfer_files([source_file, json_file], error_folder, "move")
                     continue
 
                 # Сравниваем номера контейнеров из OCR и ЦУП
-                container_numbers_cup_set: set[str] = set(container_numbers_cup)
+                container_numbers_cup_set: set[str] = {x for sublist in container_numbers_cup for x in sublist}
                 container_numbers_ocr_set: set[str] = {cont.get("container") for cont in json_data.get("containers")}
 
                 # Проверяем, есть ли пересечение между наборами номеров контейнеров
                 if not container_numbers_cup_set & container_numbers_ocr_set:
                     warning_message = "Номера контейнеров из OCR не пересекаются с номерами из ЦУП"
-                    logger.warning(f"❌ {warning_message}: {transaction_number} ({source_file})")
+                    logger.warning(f"❌ {warning_message}: {transaction_numbers} ({source_file})")
                     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
                     transfer_files([source_file, json_file], error_folder, "move")
                     continue
@@ -158,7 +159,7 @@ def process_output_ocr(
                     # некоторые контейнеры были успешно распознаны
                     warning_message = (f"Были распознаны номера контейнеров, которые отсуствуют в ЦУП: "
                                        f"{container_numbers_difference}")
-                    logger.warning(f"❌ {warning_message}: {transaction_number} ({source_file})")
+                    logger.warning(f"❌ {warning_message}: {transaction_numbers} ({source_file})")
                     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
                     transfer_files([source_file, json_file], error_folder, "move")
 
@@ -172,32 +173,66 @@ def process_output_ocr(
                 #     continue
 
                 # Логируем успешную обработку и перемещаем файлы в папку успешной обработки
-                logger.info(f"✔️ Файл Файл обработан успешно: {source_file}")
+                success_message = "\n".join([
+                    f"{source_file_name}",
+                    f"bill_of_lading: {json_data['bill_of_lading']}",
+                    f"transaction_numbers: {json_data['transaction_numbers']}",
+                    f"containers:",
+                    *[f"    - {cont['container']}: {cont['seals']}" for cont in json_data["containers"]]
+                ])
+                logger.info(f"✔️ Файл Файл обработан успешно: {source_file}\n{success_message}")
+                metadata["successes"].append(success_message)
                 transfer_files([source_file, json_file], success_folder, "move")
                 success_flag = True
 
             # Сохранение обновленных метаданных после обработки всех файлов в директории
             write_json(folder / "metadata.json", metadata)
 
-            # Обрабатываем ошибки: копируем/перемещаем метаданные и отправляем уведомления на email отправителя
+            # Начало формирования сообщения
+            email_messages: list[str] = [
+                f"Здравствуйте!\n"
+                f"Это автоматическое уведомление по файлам, полученным от {metadata['sender']}.\n"
+                f"Дата получения: {convert_email_date_to_moscow(metadata['date'])}"
+            ]
+
+            # Обрабатываем ошибки: копируем/перемещаем метаданные и подготавливаем email уведомление
             if metadata["errors"]:
                 # Определяем действие с метаданными: копирование или перемещение
                 metadata_action = "copy2" if success_flag else "move"
                 transfer_files(folder / "metadata.json", error_folder, metadata_action)
 
                 # Формируем текст письма с перечислением ошибок
-                error_files_text = "\n".join(
-                    f"    {i}.  {error}"
-                    for i, error in enumerate(metadata["errors"], 1)
+                error_list = "\n".join(
+                    f"    {i}. {error}" for i, error in enumerate(metadata["errors"], 1)
                 )
-                email_text = (
-                    f"В сообщении от {metadata['date']} следующие файлы не удалось распознать:\n"
-                    f"{error_files_text}\n\n"
+                email_messages.append(
+                    f"⚠️ Возникли ошибки при обработке следующих файлов:\n"
+                    f"{error_list}\n\n"
                     f"Копии файлов доступны по пути: {error_folder}"
                 )
+
+            # Email уведомление об успешно обработанных файлах.
+            # Формируем при включенной настройке в конфиге
+            if CONFIG.enable_success_notifications and metadata["successes"]:
+                # Формируем нумерованный список успешно обработанных файлов.
+                # Каждая строка начинается с "    {i}. ", где i — номер (например: "    1. ").
+                # Если в success есть переносы строк, добавляем нужный отступ к каждой новой строке
+                # для выравнивания по отступу, соответствующему началу первой строки с нумерацией.
+                success_list = "\n".join(
+                    f"    {i}. {success.replace(chr(10), chr(10) + ' ' * (len(str(i)) + 6))}"  # chr(10) = "\n"
+                    for i, success in enumerate(metadata["successes"], 1)  # i — номер с 1, success — текст об обработке
+                )
+                email_messages.append(
+                    f"✅ Успешно обработанные файлы (данные загружены в ЦУП):\n"
+                    f"{success_list}"
+                )
+
+            # Отправка письма только если есть дополнительная информация (ошибки или успехи)
+            if len(email_messages) > 1:
                 send_email(
-                    email_text=email_text,
-                    recipient_email=metadata["sender"],
+                    email_text="\n\n\n".join(email_messages),
+                    recipient_emails=metadata["sender"],
+                    # recipient_emails=CONFIG.notification_emails,
                     subject=f"Автоответ от {email_user}",
                     email_user=email_user,
                     email_pass=email_pass,

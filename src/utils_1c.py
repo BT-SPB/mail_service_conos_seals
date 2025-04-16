@@ -54,7 +54,7 @@ def cache_http_requests(func: Callable) -> Callable:
 def cup_http_request(
         function: str,
         *args: str,
-        kappa: bool = True,
+        kappa: bool = False,
         encode: bool = True,
         user_1c: str = CONFIG.USER_1C,
         password_1c: str = CONFIG.PASSWORD_1C,
@@ -132,14 +132,14 @@ def send_production_data(
         data (dict): Словарь с производственными данными, которые необходимо отправить.
         Ожидается следующая структура:
         {
-            "bill_of_lading": str,        # Номер коносамента
-            "transaction_number": str,    # Номер и дата транзакции, полученные с помощью TransactionNumberFromBillOfLading
-            "source_file_name": str,      # Название исходного файла
-            "source_file_base64": str,    # Исходный файл, закодированный в base64
-            "containers": [               # Список контейнеров
+            "bill_of_lading": str,           # Номер коносамента
+            "transaction_numbers": list[str], # Список номеров и дат транзакций, полученных с помощью TransactionNumberFromBillOfLading
+            "source_file_name": str,         # Название исходного файла
+            "source_file_base64": str,       # Исходный файл, закодированный в base64
+            "containers": [                  # Список контейнеров
                 {
-                    "container": str,     # Номер контейнера
-                    "seals": list[str]    # Список пломб (одна или несколько строк)
+                    "container": str,        # Номер контейнера
+                    "seals": list[str]       # Список пломб (одна или несколько строк)
                 },
                 ...
             ]
@@ -148,7 +148,7 @@ def send_production_data(
         Пример корректного значения:
             {
                 "bill_of_lading": "VX75EA25000897",
-                "transaction_number": "АА-0095444 от 14.04.2025",
+                "transaction_numbers": ["АА-0095444 от 14.04.2025", "АА-0095445 от 15.04.2025"],
                 "source_file_name": "КС_VX75EA25000897.pdf",
                 "source_file_base64": "JVBERi0xLjcKJeLjz9MK...",
                 "containers": [
@@ -168,7 +168,7 @@ def send_production_data(
         password_1c: Пароль пользователя для базовой авторизации
 
     Returns:
-        True - при успешной отправке данных на сервер. False - при неудаче.
+        True - при успешной отправке всех данных на сервер. False - при неудаче хотя бы одной отправки.
     """
     # Название функции
     function = "SendProductionDataToTransaction"
@@ -181,28 +181,45 @@ def send_production_data(
     # Заголовки для передачи JSON с указанием кодировки
     headers = {"Content-Type": "application/json; charset=utf-8"}
 
-    # Проходим по писку URL-адресов в порядке приоритета
-    for url in urls:
-        try:
-            logger.debug(f"🌐 Попытка отправки данных на {url}")
-            response = requests.post(
-                url,
-                auth=HTTPBasicAuth(user_1c, password_1c),
-                headers=headers,
-                json=data,
-                timeout=10
-            )
+    # Успешность отправки всех транзакций
+    all_success = True
 
-            if response.status_code == 200:
-                logger.info(f"✔️ Данные успешно отправлены. Ответ: {response.text}")
-                return True
-            else:
-                logger.warning(f"⚠️ Ошибка {response.status_code}: {response.text}")
+    # Извлекаем список номеров сделок
+    transaction_numbers: list[str] = data.pop("transaction_numbers")
 
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"⛔ Исключение при отправке на {url}: {e}")
+    # Для каждого номера сделки отправляем отдельный запрос
+    for transaction_number in transaction_numbers:
+        # Записываем в данные текущий номер сделки
+        data["transaction_number"] = transaction_number
 
-    return False
+        # Проходим по писку URL-адресов в порядке приоритета
+        success = False
+        for url in urls:
+            try:
+                logger.debug(f"🌐 Попытка отправки данных на {url}")
+                response = requests.post(
+                    url,
+                    auth=HTTPBasicAuth(user_1c, password_1c),
+                    headers=headers,
+                    json=data,
+                    timeout=10
+                )
+
+                if response.status_code == 200:
+                    logger.info(f"✔️ Данные успешно отправлены. Ответ: {response.text}")
+                    success = True
+                    break
+                else:
+                    logger.warning(f"⚠️ Ошибка {response.status_code}: {response.text}")
+
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"⛔ Исключение при отправке на {url}: {e}")
+
+        if not success:
+            all_success = False
+            logger.error(f"❌ Не удалось отправить данные для transaction_number: {transaction_number}")
+
+    return all_success
 
 
 if __name__ == "__main__":
@@ -213,6 +230,7 @@ if __name__ == "__main__":
 
     BL = r'TransactionNumberFromBillOfLading'
     arg1 = r'MEDUFE573177'
+    arg1 = "SILNSA25090100"
     # arg2 = "SUDUN1NAN013467A"
     # arg3 = "VX75EA25000897"
     cup_http_request(BL, arg1)
@@ -220,8 +238,8 @@ if __name__ == "__main__":
     # cup_http_request(BL, arg2)
     # cup_http_request(BL, arg3)
 
-    func = "GetTransportPositionNumberByTransactionNumber"
-    arg1 = "НОВ-124370 от 31.03.2025"
-    arg2 = "НОВ-124373 от 01.04.2025"
-    cup_http_request(func, arg1.split()[0], encode=False)
-    cup_http_request(func, arg2.split()[0], encode=False)
+    # func = "GetTransportPositionNumberByTransactionNumber"
+    # arg1 = "НОВ-124370 от 31.03.2025"
+    # arg2 = "НОВ-124373 от 01.04.2025"
+    # cup_http_request(func, arg1.split()[0], encode=False)
+    # cup_http_request(func, arg2.split()[0], encode=False)
