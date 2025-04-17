@@ -3,7 +3,6 @@ import imaplib
 import time
 import traceback
 from pathlib import Path
-from datetime import datetime
 from email.message import Message
 from email.utils import parseaddr
 
@@ -88,9 +87,9 @@ class EmailMonitor:
         try:
             # Выполняем logout для корректного завершения сессии
             self.server.logout()
-            logger.info("IMAP-соединение закрыто")
+            logger.info("✔️ IMAP-соединение закрыто")
         except Exception as e:
-            logger.error(f"Ошибка при закрытии IMAP-соединения: {e}")
+            logger.error(f"⛔ Ошибка при закрытии IMAP-соединения: {e}")
         self.server = None
 
     def stop(self) -> None:
@@ -102,7 +101,7 @@ class EmailMonitor:
         """
         self.running = False
         self.disconnect()
-        logger.info("Мониторинг остановлен")
+        logger.info("🔔 Мониторинг остановлен")
 
     def process_unseen_email_inbox(self) -> None:
         """
@@ -124,10 +123,10 @@ class EmailMonitor:
             # Поиск непрочитанных писем
             message_ids = self.server.search(["UNSEEN"])
             if not message_ids:
-                logger.info("Новых писем нет")
+                logger.info("🔔 Новых писем нет")
                 return
 
-            logger.info(f"Обнаружено непрочитанных писем: {len(message_ids)}")
+            logger.info(f"🔔 Обнаружено непрочитанных писем: {len(message_ids)}")
 
             # Последовательная обработка каждого письма
             for msg_id in message_ids:
@@ -135,7 +134,7 @@ class EmailMonitor:
                     # Получаем данные письма без изменения статуса (BODY.PEEK)
                     msg_data = self.server.fetch(msg_id, ["BODY.PEEK[]"])
                     if not msg_data or msg_id not in msg_data:
-                        logger.error(f"Не удалось получить данные письма ID {msg_id}")
+                        logger.error(f"❌ Не удалось получить данные письма ID {msg_id}")
                         continue
 
                     # Парсим письмо в объект Message для удобной работы с содержимым
@@ -156,13 +155,13 @@ class EmailMonitor:
                     attachments: list[tuple[str, bytes]] = extract_attachments(email_message)
 
                     if not attachments:
-                        logger.info(f"Письмо от {metadata['sender']} не содержит вложений")
+                        logger.info(f"🔔 Письмо от {metadata['sender']} не содержит вложений")
                         # Отметка письма как прочитанного
                         self.server.add_flags(msg_id, ["\\Seen"])
                         continue
 
                     # Обработка вложений при их наличии
-                    logger.info(f"В письме от {metadata['sender']} найдено вложений: {len(attachments)}")
+                    logger.info(f"✔🔔 В письме от {metadata['sender']} найдено вложений: {len(attachments)}")
 
                     # Формирование уникального имени папки на основе даты и времени отправки письма
                     date_time = convert_email_date_to_moscow(metadata["date"], "%y%m%d_%H%M%S")
@@ -174,7 +173,7 @@ class EmailMonitor:
                     )
                     # Создание директории
                     folder_path.mkdir(exist_ok=True, parents=True)
-                    logger.debug(f"Создана директория: {folder_path}")
+                    logger.debug(f"✔️ Создана директория: {folder_path}")
 
                     # Последовательная обработка каждого вложения
                     for file_name, content in attachments:
@@ -186,7 +185,7 @@ class EmailMonitor:
                                 f"Допустимые: {valid_ext_text}."
                             )
                             metadata["errors"].append(error_msg)
-                            logger.warning(error_msg)
+                            logger.warning(f"❌ {error_msg}")
                             continue
 
                         # Создание безопасного имени файла
@@ -203,23 +202,23 @@ class EmailMonitor:
                                 f"{file_path.name}",
                                 f"{file_path.stem}({file_path.suffix[1:]}).json"
                             ))
-                            logger.info(f"Файл сохранен: {file_path}")
+                            logger.info(f"💾 Файл сохранен: {file_path}")
                         except OSError as e:
-                            logger.error(f"Ошибка при сохранении файла {file_path}: {e}")
+                            logger.error(f"⛔ Ошибка при сохранении файла {file_path}: {e}")
 
                     # Сохранение метаданных
                     write_json(folder_path / "metadata.json", metadata)
-                    logger.info(f"Сохранены метаданные: {folder_path / 'metadata.json'}")
+                    logger.info(f"💾 Сохранены метаданные: {folder_path / 'metadata.json'}")
 
                     # Отмечаем письмо как прочитанное после успешной обработки
                     self.server.add_flags(msg_id, ["\\Seen"])
-                    logger.info(f"Письмо ID {msg_id} обработано и отмечено как прочитанное")
+                    logger.info(f"✔️ Письмо ID {msg_id} обработано и отмечено как прочитанное")
 
                 except Exception as e:
-                    logger.error(f"Ошибка обработки письма ID {msg_id}: {traceback.format_exc()}")
+                    logger.error(f"⛔ Ошибка обработки письма ID {msg_id}: {traceback.format_exc()}")
 
         except Exception:
-            logger.error(f"Произошла ошибка при обработке писем: {traceback.format_exc()}")
+            logger.error(f"⛔ Произошла ошибка при обработке писем: {traceback.format_exc()}")
 
     def monitor(self) -> None:
         """
@@ -232,8 +231,8 @@ class EmailMonitor:
         self.running = True
         try:
             self.connect()
-            logger.info("Запущен IDLE-мониторинг почты")
-            logger.info(f"Принудительная проверка писем включена "
+            logger.info("🔍 Запущен IDLE-мониторинг почты")
+            logger.info(f"🔔 Принудительная проверка писем включена "
                         f"с интервалом {self.periodic_check_interval} сек.")
 
             # Запоминаем время принудительной последней проверки
@@ -243,7 +242,7 @@ class EmailMonitor:
                 try:
                     # Выполняем периодическую проверку непрочитанных писем
                     if time.time() - last_check_time >= self.periodic_check_interval:
-                        logger.debug("Выполняется принудительная проверка писем")
+                        logger.debug("🔍 Выполняется принудительная проверка писем")
                         # Выполняем проверку
                         self.process_unseen_email_inbox()
                         last_check_time = time.time()
@@ -254,12 +253,12 @@ class EmailMonitor:
                     responses = self.server.idle_check(timeout=10)
                     self.server.idle_done()
                     if responses:
-                        logger.debug(f"IDLE уведомления: {responses}")
+                        logger.debug(f"🔔 IDLE уведомления: {responses}")
                         self.process_unseen_email_inbox()
                         last_check_time = time.time()
 
                 except Exception as e:
-                    logger.error(f"Ошибка в режиме IDLE: {e}")
+                    logger.error(f"⛔ Ошибка в режиме IDLE: {e}")
                     self.disconnect()
                     time.sleep(5)  # Ждем перед переподключением
                     if self.running:
@@ -269,11 +268,12 @@ class EmailMonitor:
                         last_check_time = time.time()
 
         except Exception as e:
-            logger.error(f"Критическая ошибка мониторинга: {e}")
+            logger.error(f"⛔ Критическая ошибка мониторинга: {e}")
         finally:
             self.stop()
 
 
+# --- ЗАПАСНАЯ ФУНКЦИЯ ---
 def process_email_inbox_simple(
         email_user: str,
         email_pass: str,
@@ -356,13 +356,8 @@ def process_email_inbox_simple(
                 # Обработка вложений при их наличии
                 logger.info(f"В письме от {metadata['sender']} найдено вложений: {len(attachments)}")
 
-                # Формирование уникального имени папки на основе даты и отправителя
-                try:
-                    # По возможности в качестве даты и времени берем информацию из метаданных
-                    date_time = parsedate_to_datetime(metadata['date']).strftime("%y%m%d_%H%M%S")
-                except (ValueError, TypeError):
-                    # Если в метаданных отсутствует дата отправки, то берем текущую дату и время
-                    date_time = datetime.now().strftime("%y%m%d_%H%M%S")
+                # Формирование уникального имени папки на основе даты и времени отправки письма
+                date_time = convert_email_date_to_moscow(metadata["date"], "%y%m%d_%H%M%S")
 
                 folder_path = CONFIG.IN_FOLDER / sanitize_pathname(
                     name=f"{date_time}_{metadata['sender']}",

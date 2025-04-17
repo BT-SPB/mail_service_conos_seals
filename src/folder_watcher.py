@@ -64,7 +64,7 @@ class FolderWatcher(FileSystemEventHandler):
         ):
             return
 
-        logger.info(f"🔍 Обнаружено изменение: {event.src_path} ({event.event_type})")
+        logger.debug(f"🔍 Обнаружено изменение: {event.src_path} ({event.event_type})")
         # Устанавливаем флаг события и фиксируем текущее время
         self.event_triggered = True
         self.last_event_time = time.time()

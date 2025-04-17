@@ -228,18 +228,9 @@ if __name__ == "__main__":
     # data = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS\test_1c.json")
     # send_production_data(data)
 
-    BL = r'TransactionNumberFromBillOfLading'
-    arg1 = r'MEDUFE573177'
-    arg1 = "SILNSA25090100"
-    # arg2 = "SUDUN1NAN013467A"
-    # arg3 = "VX75EA25000897"
-    cup_http_request(BL, arg1)
-    # cup_http_request(BL, arg1)
-    # cup_http_request(BL, arg2)
-    # cup_http_request(BL, arg3)
+    func = r'TransactionNumberFromBillOfLading'
+    arg = r'KCO000006945'
+    tn = cup_http_request(func, arg)
 
-    # func = "GetTransportPositionNumberByTransactionNumber"
-    # arg1 = "НОВ-124370 от 31.03.2025"
-    # arg2 = "НОВ-124373 от 01.04.2025"
-    # cup_http_request(func, arg1.split()[0], encode=False)
-    # cup_http_request(func, arg2.split()[0], encode=False)
+    func = "GetTransportPositionNumberByTransactionNumber"
+    cup_http_request(func, tn[-1].split()[0], encode=False)

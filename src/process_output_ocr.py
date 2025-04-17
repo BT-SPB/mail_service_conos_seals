@@ -106,7 +106,8 @@ def process_output_ocr(
                     "TransactionNumberFromBillOfLading", json_data["bill_of_lading"]
                 )
                 if not (transaction_numbers and isinstance(transaction_numbers, list)):
-                    warning_message = "Не удалось получить номер транзакции из ЦУП"
+                    warning_message = ("Не удалось получить номер транзакции из ЦУП. "
+                                       "Возможно был неверно распознан номер коносамента.")
                     logger.warning(f"❌ {warning_message}: {json_data['bill_of_lading']} ({json_file})")
                     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
                     transfer_files([source_file, json_file], error_folder, "move")
@@ -123,12 +124,13 @@ def process_output_ocr(
 
                 # Запрашиваем номера контейнеров по номеру транзакции
                 container_numbers_cup: list[list[str]] = [
-                    cup_http_request(
+                    # Очищаем полученные номера от лишних пробелов
+                    [number.strip() for number in cup_http_request(
                         "GetTransportPositionNumberByTransactionNumber",
-                        # Берем только часть с номером "АА-0095444" игнорируя "от 14.04.2025"
+                        # Извлекаем только номер, отсекая дату (например, "АА-0095444 от 14.04.2025" → "АА-0095444"
                         transaction_number.split()[0],
                         encode=False
-                    )
+                    )]
                     for transaction_number in transaction_numbers
                 ]
 
@@ -172,7 +174,7 @@ def process_output_ocr(
                 #     transfer_files([source_file, json_file], error_folder, "move")
                 #     continue
 
-                # Логируем успешную обработку и перемещаем файлы в папку успешной обработки
+                # Логируем успешную обработку и перемещаем файлы в директорию успешной обработки
                 success_message = "\n".join([
                     f"{source_file_name}",
                     f"bill_of_lading: {json_data['bill_of_lading']}",
@@ -218,7 +220,7 @@ def process_output_ocr(
                 # Каждая строка начинается с "    {i}. ", где i — номер (например: "    1. ").
                 # Если в success есть переносы строк, добавляем нужный отступ к каждой новой строке
                 # для выравнивания по отступу, соответствующему началу первой строки с нумерацией.
-                success_list = "\n".join(
+                success_list = "\n\n".join(
                     f"    {i}. {success.replace(chr(10), chr(10) + ' ' * (len(str(i)) + 6))}"  # chr(10) = "\n"
                     for i, success in enumerate(metadata["successes"], 1)  # i — номер с 1, success — текст об обработке
                 )
