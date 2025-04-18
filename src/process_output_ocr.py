@@ -165,14 +165,14 @@ def process_output_ocr(
                     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
                     transfer_files([source_file, json_file], error_folder, "move")
 
-                # Отправляем номера пломб в ЦУП
-                # При неудаче логируем
-                # if not send_production_data(json_data):
-                #     warning_message = f"Не удалось загрузить номера пломб в ЦУП"
-                #     logger.warning(f"❌ {warning_message}: {json_file}")
-                #     metadata["errors"].append(f"{source_file_name}: Ошибка. {warning_message}")
-                #     transfer_files([source_file, json_file], error_folder, "move")
-                #     continue
+                # Отправляем номера пломб в ЦУП, если это включено в настройках
+                if CONFIG.enable_send_production_data:
+                    if not send_production_data(json_data):
+                        warning_message = f"Не удалось загрузить номера пломб в ЦУП"
+                        logger.warning(f"❌ {warning_message}: {json_file}")
+                        metadata["errors"].append(f"{source_file_name}: Ошибка. {warning_message}")
+                        transfer_files([source_file, json_file], error_folder, "move")
+                        continue
 
                 # Логируем успешную обработку и перемещаем файлы в директорию успешной обработки
                 success_message = "\n".join([
@@ -182,7 +182,7 @@ def process_output_ocr(
                     f"containers:",
                     *[f"    - {cont['container']}: {cont['seals']}" for cont in json_data["containers"]]
                 ])
-                logger.info(f"✔️ Файл Файл обработан успешно: {source_file}\n{success_message}")
+                logger.info(f"✔️ Файл обработан успешно: {source_file}\n{success_message}")
                 metadata["successes"].append(success_message)
                 transfer_files([source_file, json_file], success_folder, "move")
                 success_flag = True
@@ -233,8 +233,8 @@ def process_output_ocr(
             if len(email_messages) > 1:
                 send_email(
                     email_text="\n\n\n".join(email_messages),
-                    recipient_emails=metadata["sender"],
-                    # recipient_emails=CONFIG.notification_emails,
+                    # recipient_emails=metadata["sender"],
+                    recipient_emails=CONFIG.notification_emails,
                     subject=f"Автоответ от {email_user}",
                     email_user=email_user,
                     email_pass=email_pass,

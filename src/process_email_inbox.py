@@ -161,7 +161,7 @@ class EmailMonitor:
                         continue
 
                     # Обработка вложений при их наличии
-                    logger.info(f"✔🔔 В письме от {metadata['sender']} найдено вложений: {len(attachments)}")
+                    logger.info(f"🔔 В письме от {metadata['sender']} найдено вложений: {len(attachments)}")
 
                     # Формирование уникального имени папки на основе даты и времени отправки письма
                     date_time = convert_email_date_to_moscow(metadata["date"], "%y%m%d_%H%M%S")
@@ -180,12 +180,12 @@ class EmailMonitor:
                         file_ext = Path(file_name).suffix.lower()
                         if file_ext not in CONFIG.valid_ext:
                             valid_ext_text = ", ".join(f"'*{ext}'" for ext in CONFIG.valid_ext)
-                            error_msg = (
+                            warning_message = (
                                 f"{file_name}: Неподдерживаемое расширение. "
                                 f"Допустимые: {valid_ext_text}."
                             )
-                            metadata["errors"].append(error_msg)
-                            logger.warning(f"❌ {error_msg}")
+                            metadata["errors"].append(warning_message)
+                            logger.warning(f"❌ {warning_message}")
                             continue
 
                         # Создание безопасного имени файла
@@ -274,6 +274,7 @@ class EmailMonitor:
 
 
 # --- ЗАПАСНАЯ ФУНКЦИЯ ---
+# Предназначена для упрощенного мониторинга, используя вечный цикл
 def process_email_inbox_simple(
         email_user: str,
         email_pass: str,
