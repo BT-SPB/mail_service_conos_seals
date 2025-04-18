@@ -10,6 +10,7 @@ from email.header import decode_header
 from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
 
+from config import CONFIG
 from src.logger import logger
 
 
@@ -211,14 +212,28 @@ def send_email(
     """
     # Нормализация входных данных: преобразование строки в список, если передан один адрес
     recipients = (
-        [recipient_emails]
-        if isinstance(recipient_emails, str)
+        [recipient_emails] if isinstance(recipient_emails, str)
         else recipient_emails
     )
 
     # Проверка корректности списка получателей
     if not recipients or not all(isinstance(email, str) and email for email in recipients):
-        logger.error(f"Некорректный список получателей: {recipients}")
+        logger.error(f"Некорректные адреса получателей: {recipients}")
+        return
+
+    format_email_log = (
+        f"\nИСХОДЯЩИЙ EMAIL:\n"
+        f"{'-' * 80}\n"
+        f"Получатели: {', '.join(recipients)}\n"
+        f"Тема: {subject}\n"
+        f"Текст:\n{email_text}\n"
+        f"{'-' * 80}"
+    )
+
+    # Проверка настройки блокировки отправки
+    if CONFIG.block_email_sending:
+        logger.info(f"📧 Отправка email заблокирована настройкой block_email_sending")
+        logger.info(format_email_log)
         return
 
     try:
@@ -226,32 +241,21 @@ def send_email(
         msg = MIMEText(email_text, email_format, 'utf-8')
         msg['Subject'] = subject
 
-        # # Установка соединения с SMTP-сервером с использованием контекстного менеджера
-        # with smtplib.SMTP(smtp_server, smtp_port, timeout=10) as server:
-        #     # Активация TLS-шифрования для безопасной передачи данных
-        #     server.starttls()
-        #     # Аутентификация на сервере с использованием логина и пароля
-        #     server.login(email_user, email_pass)
-        #     # Отправка письма всем получателям
-        #     server.send_message(msg, from_addr=email_user, to_addrs=recipients)
+        # Установка соединения с SMTP-сервером с использованием контекстного менеджера
+        with smtplib.SMTP(smtp_server, smtp_port, timeout=10) as server:
+            server.starttls()  # Включение TLS-шифрования
+            server.login(email_user, email_pass)  # Аутентификация
+            server.send_message(msg, from_addr=email_user, to_addrs=recipients)  # Отправка письма
 
-        # Логирование успешной отправки письма
-        logger.info(
-            f"\nИСХОДЯЩИЙ EMAIL:\n"
-            f"{'-' * 80}\n"
-            f"Адрес(а) получателя(ей): {', '.join(recipients)}\n"
-            f"Тема письма: {subject}\n"
-            f"Текст письма:\n{email_text}\n"
-            f"{'-' * 80}"
-        )
+        # Логирование успешной отправки
+        logger.info(f"📧 Email успешно отправлен: {subject}")
+        logger.info(format_email_log)
 
     except smtplib.SMTPException as smtp_error:
         # Обработка специфичных ошибок SMTP (например, неверные учетные данные)
         logger.error(f"Ошибка SMTP при отправке письма: {str(smtp_error)}")
-        logger.debug(f"Полная трассировка ошибки:\n{traceback.format_exc()}")
-        return
+        logger.debug(f"Трассировка ошибки:\n{traceback.format_exc()}")
     except Exception as e:
         # Обработка остальных возможных ошибок
         logger.error(f"Неожиданная ошибка при отправке письма: {str(e)}")
-        logger.debug(f"Полная трассировка ошибки:\n{traceback.format_exc()}")
-        return
+        logger.debug(f"Трассировка ошибки:\n{traceback.format_exc()}")

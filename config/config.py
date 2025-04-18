@@ -17,24 +17,26 @@ class Config(BaseSettings):
     директорий и загрузки зашифрованных настроек.
 
     Args:
-        CONFIG_DIR (Path): Путь к директории конфигурации, вычисляется автоматически.
-        WORK_DIR (Path): Рабочая директория проекта, по умолчанию корень проекта.
-        IN_FOLDER (Path | None): Входная папка для обработки файлов.
-        OUT_OCR_FOLDER (Path | None): Папка для результатов OCR.
-        SUCCESS_FOLDER (Path | None): Папка для успешно обработанных файлов.
-        ERROR_FOLDER (Path | None): Папка для файлов с ошибками.
-        EMAIL_ADDRESS (str | None): Email-адрес для отправки уведомлений.
-        EMAIL_PASSWORD (str | None): Пароль для email-аккаунта.
-        USER_1C (str | None): Имя пользователя для системы 1C.
-        PASSWORD_1C (str | None): Пароль для системы 1C.
-        imap_server (str): Адрес IMAP-сервера.
-        imap_port (int): Порт IMAP-сервера.
-        smtp_server (str): Адрес SMTP-сервера.
-        smtp_port (int): Порт SMTP-сервера.
-        notification_emails (list[str]): Список email-адресов для уведомлений.
-        enable_success_notifications (bool): Флаг отправки уведомлений об успешной обработке.
-        valid_images (set[str]): Допустимые расширения файлов изображений.
-        valid_ext (set[str]): Допустимые расширения всех файлов (включая PDF).
+        CONFIG_DIR (Path): Путь к директории конфигурации, вычисляется автоматически
+        WORK_DIR (Path): Рабочая директория проекта, по умолчанию корень проекта
+        IN_FOLDER (Path | None): Входная папка для обработки файлов
+        OUT_OCR_FOLDER (Path | None): Папка для результатов OCR
+        SUCCESS_FOLDER (Path | None): Папка для успешно обработанных файлов
+        ERROR_FOLDER (Path | None): Папка для файлов с ошибками
+        EMAIL_ADDRESS (str | None): Email-адрес для отправки уведомлений
+        EMAIL_PASSWORD (str | None): Пароль для email-аккаунта
+        USER_1C (str | None): Имя пользователя для системы 1C
+        PASSWORD_1C (str | None): Пароль для системы 1C
+        imap_server (str): Адрес IMAP-сервера
+        imap_port (int): Порт IMAP-сервера
+        smtp_server (str): Адрес SMTP-сервера
+        smtp_port (int): Порт SMTP-сервера
+        notification_emails (list[str]): Список email-адресов для уведомлений
+        block_email_sending (bool): # Флаг для блокировки отправки ЛЮБЫХ email-уведомлений
+        enable_success_notifications (bool): Флаг отправки уведомлений об успешной обработке
+        enable_send_production_data (bool): Флаг для включения отправки номеров пломб и файлов коносаментов в ЦУП
+        valid_images (set[str]): Допустимые расширения файлов изображений
+        valid_ext (set[str]): Допустимые расширения всех файлов (включая PDF)
 
     Returns:
         None
@@ -76,6 +78,9 @@ class Config(BaseSettings):
         "oga@sdrzbt.ru",  # Ганенко Олег
         "aby@sdrzbt.ru",  # Быстрова Арина
     ]
+
+    # Флаг для блокировки отправки ЛЮБЫХ email-уведомлений
+    block_email_sending: bool = False
 
     # Флаг для включения уведомлений об успешной обработке
     # True - уведомления отправляются при успехе и ошибках
