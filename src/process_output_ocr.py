@@ -1,4 +1,5 @@
 import shutil
+import traceback
 from pathlib import Path
 
 from config import CONFIG
@@ -44,17 +45,18 @@ def process_output_ocr(
     ]
 
     # Логируем информацию о найденных директориях
-    if folders_for_processing:
-        logger.info(f"🔍 Обнаружено директорий для обработки: {len(folders_for_processing)}")
-    else:
+    if not folders_for_processing:
         logger.info("🗿 Директории для обработки не найдены")
         return
+
+    logger.info(f"🔍 Обнаружено директорий для обработки: {len(folders_for_processing)}")
 
     # Последовательно обрабатываем каждую директорию
     for folder in folders_for_processing:
         try:
             # Читаем метаданные из JSON-файла, содержащего информацию о файлах и ошибках
-            metadata: dict = read_json(folder / "metadata.json")
+            metadata_file = folder / "metadata.json"
+            metadata: dict = read_json(metadata_file)
             success_flag: bool = False  # Флаг успешной обработки хотя бы одного файла
 
             # Формирование путей для папок ошибок и успешной обработки.
@@ -65,6 +67,30 @@ def process_output_ocr(
             success_folder = CONFIG.SUCCESS_FOLDER / sanitize_pathname(
                 folder.name, is_file=False, parent_dir=CONFIG.SUCCESS_FOLDER
             )
+
+            # Проверяем целостность метаданных: файл не должен быть пустым,
+            # а так же должны присутствовать все ключевые поля
+            required_fields = {
+                "subject": str,
+                "sender": str,
+                "date": str,
+                "text_content": str,
+                "files": list,
+                "errors": list,
+                "successes": list
+            }
+            if not metadata or not all(
+                    isinstance(metadata.get(field), expected_type)
+                    for field, expected_type in required_fields.items()
+            ):
+                warning_message = f"❌ Файл metadata.json имеет неверный формат или тип данных: {metadata_file}"
+                logger.warning(warning_message)
+                # Добавляем сообщение об ошибке в метаданные
+                metadata.setdefault("errors", []).append(warning_message)
+                write_json(metadata_file, metadata)
+                # Перемещаем директорию в папку ошибок
+                shutil.move(folder, error_folder)
+                continue
 
             # Обрабатываем файлы (исходный и JSON), указанные в метаданных
             for source_file_name, json_file_name in metadata["files"]:
@@ -260,5 +286,5 @@ def process_output_ocr(
                 )
 
         except Exception as e:
-            logger.error(f"⛔ Ошибка при обработке директории {folder}: {e}")
+            logger.error(f"⛔ Ошибка при обработке директории {folder}: {e}\n{traceback.format_exc()}")
             continue

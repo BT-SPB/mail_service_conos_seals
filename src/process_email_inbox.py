@@ -89,7 +89,7 @@ class EmailMonitor:
             self.server.logout()
             logger.info("✔️ IMAP-соединение закрыто")
         except Exception as e:
-            logger.error(f"⛔ Ошибка при закрытии IMAP-соединения: {e}")
+            logger.error(f"⛔ Ошибка при закрытии IMAP-соединения: {e}\n{traceback.format_exc()}")
         self.server = None
 
     def stop(self) -> None:
@@ -215,10 +215,10 @@ class EmailMonitor:
                     logger.info(f"✔️ Письмо ID {msg_id} обработано и отмечено как прочитанное")
 
                 except Exception as e:
-                    logger.error(f"⛔ Ошибка обработки письма ID {msg_id}: {traceback.format_exc()}")
+                    logger.error(f"⛔ Ошибка обработки письма ID {msg_id}: {e}\n{traceback.format_exc()}")
 
-        except Exception:
-            logger.error(f"⛔ Произошла ошибка при обработке писем: {traceback.format_exc()}")
+        except Exception as e:
+            logger.error(f"⛔ Произошла ошибка при обработке писем: {e}\n{traceback.format_exc()}")
 
     def monitor(self) -> None:
         """
@@ -258,7 +258,7 @@ class EmailMonitor:
                         last_check_time = time.time()
 
                 except Exception as e:
-                    logger.error(f"⛔ Ошибка в режиме IDLE: {e}")
+                    logger.error(f"⛔ Ошибка в режиме IDLE: {e}\n{traceback.format_exc()}")
                     self.disconnect()
                     time.sleep(5)  # Ждем перед переподключением
                     if self.running:
@@ -268,7 +268,7 @@ class EmailMonitor:
                         last_check_time = time.time()
 
         except Exception as e:
-            logger.error(f"⛔ Критическая ошибка мониторинга: {e}")
+            logger.error(f"⛔ Критическая ошибка мониторинга: {e}\n{traceback.format_exc()}")
         finally:
             self.stop()
 

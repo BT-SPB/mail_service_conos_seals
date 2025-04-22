@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from cryptography.fernet import Fernet
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.logger import logger
+from src.logger import init_logger, get_logger
 
 
 class Config(BaseSettings):
@@ -23,7 +23,8 @@ class Config(BaseSettings):
         OUT_OCR_FOLDER (Path | None): Папка для результатов OCR
         SUCCESS_FOLDER (Path | None): Папка для успешно обработанных файлов
         ERROR_FOLDER (Path | None): Папка для файлов с ошибками
-        EMAIL_ADDRESS (str | None): Email-адрес для отправки уведомлений
+        LOG_FOLDER (Path | None): Папка для хранения логов
+        EMAIL_ADDRESS (str | None): Email-адрес для приема сообщений и отправки уведомлений
         EMAIL_PASSWORD (str | None): Пароль для email-аккаунта
         USER_1C (str | None): Имя пользователя для системы 1C
         PASSWORD_1C (str | None): Пароль для системы 1C
@@ -59,6 +60,7 @@ class Config(BaseSettings):
     OUT_OCR_FOLDER: Path | None = None
     SUCCESS_FOLDER: Path | None = None
     ERROR_FOLDER: Path | None = None
+    LOG_FOLDER: Path | None = None
 
     # Учетные данные для email и 1C
     EMAIL_ADDRESS: str | None = None
@@ -101,11 +103,13 @@ class Config(BaseSettings):
             self.IN_FOLDER,
             self.OUT_OCR_FOLDER,
             self.SUCCESS_FOLDER,
-            self.ERROR_FOLDER
+            self.ERROR_FOLDER,
+            self.LOG_FOLDER
         ]
 
         for directory in directories:
-            directory.mkdir(parents=True, exist_ok=True)
+            if directory:
+                directory.mkdir(parents=True, exist_ok=True)
 
     def load_encrypted_settings(self) -> None:
         """Загружает и расшифровывает конфиденциальные настройки из зашифрованного файла.
@@ -117,30 +121,26 @@ class Config(BaseSettings):
             FileNotFoundError: Если отсутствует crypto.key или encrypted.env.
             Exception: Если произошла ошибка при расшифровке данных.
         """
+        key_path = self.CONFIG_DIR / "crypto.key"
+        encrypted_path = self.CONFIG_DIR / "encrypted.env"
+
         try:
             # Чтение ключа шифрования
-            key_path = self.CONFIG_DIR / "crypto.key"
             with open(key_path, mode="r", encoding="utf-8") as key_file:
                 crypto_key = key_file.read().strip()
-        except FileNotFoundError as e:
-            logger.error("Не найден файл crypto.key")
-            logger.error(e)
-            return
 
-        # Чтение и расшифровка зашифрованного файла
-        try:
             # Инициализация шифровальщика
             fernet = Fernet(crypto_key)
-            with open(self.CONFIG_DIR / "encrypted.env", "rb") as encrypted_file:
-                encrypted_data = encrypted_file.read()
 
-            # Расшифровка данных и преобразование в строку
+            # Чтение и расшифровка зашифрованного файла
+            with open(encrypted_path, "rb") as encrypted_file:
+                encrypted_data = encrypted_file.read()
             decrypted_bytes = fernet.decrypt(encrypted_data)
             decrypted_text = decrypted_bytes.decode("utf-8")
 
             # Загрузка переменных окружения из расшифрованных данных
-            string_stream = StringIO(decrypted_text)
-            load_dotenv(stream=string_stream)
+            with StringIO(decrypted_text) as string_stream:
+                load_dotenv(stream=string_stream)
 
             # Обновление конфигурационных полей
             self.EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
@@ -148,33 +148,36 @@ class Config(BaseSettings):
             self.USER_1C = os.getenv("USER_1C")
             self.PASSWORD_1C = os.getenv("PASSWORD_1C")
 
-        except FileNotFoundError:
-            logger.print("Не найден файл encrypted.env")
+        except FileNotFoundError as e:
+            get_logger().error(f"Не найден файл: {e}")
         except Exception as e:
-            logger.print(f"Ошибка при расшифровке: {e}")
+            get_logger().error(f"Ошибка при расшифровке: {e}")
 
     def model_post_init(self, __context) -> None:
         """Инициализирует конфигурацию после создания экземпляра класса.
 
         Устанавливает пути к рабочим директориям, загружает зашифрованные настройки
-        и создает необходимые директории. Выполняется автоматически после инициализации
-        объекта благодаря механизму pydantic.
+        и создает необходимые директории.
+        Примечание: Этот метод вызывается автоматически после создания экземпляра.
 
         Args:
             __context: Контекст инициализации, передаваемый pydantic (не используется).
-
-        Примечание: Этот метод вызывается автоматически после создания экземпляра.
         """
         # Установка путей к рабочим директориям относительно WORK_DIR
-        self.IN_FOLDER = self.WORK_DIR / "WORKFLOW" / "IN"
-        self.OUT_OCR_FOLDER = self.WORK_DIR / "WORKFLOW" / "OUT_OCR"
-        self.SUCCESS_FOLDER = self.WORK_DIR / "WORKFLOW" / "SUCCESS"
+        WORKFLOW_DIR = self.WORK_DIR / "WORKFLOW"
+        self.IN_FOLDER = WORKFLOW_DIR / "IN"
+        self.OUT_OCR_FOLDER = WORKFLOW_DIR / "OUT_OCR"
+        self.SUCCESS_FOLDER = WORKFLOW_DIR / "SUCCESS"
         self.ERROR_FOLDER = self.WORK_DIR / "ERROR"
+        self.LOG_FOLDER = WORKFLOW_DIR / "logs"
+
+        # Инициализация логгера после инициализации директории для логов
+        init_logger(log_file=self.LOG_FOLDER / "rates_mail.log")
 
         # Выполнение загрузки зашифрованных настроек и создание директорий
         self.load_encrypted_settings()
         self.setup_directories()
-        logger.info("Инициализация конфига завершена")
+        get_logger().info("✔️ Инициализация конфига завершена")
 
     def display_config(self) -> str:
         """Формирует строковое представление конфигурации для отображения.
@@ -186,7 +189,7 @@ class Config(BaseSettings):
             str: Строковое представление конфигурации.
         """
         # Формирование заголовка и завершающей линии
-        title = "  CONFIG PARAMS  ".center(80, "=")
+        title = "\n" + "  CONFIG PARAMS  ".center(80, "=")
         end = "=" * 80
 
         # Исключение конфиденциальных полей из вывода
@@ -197,11 +200,11 @@ class Config(BaseSettings):
         # Формирование списка строк для каждого параметра
         params = [f"{k}: {v}" for k, v in config_dict.items()]
         # Объединение всех частей в итоговую строку
-        return "\n".join((title, *params, end))
+        return "\n".join([title, *params, end])
 
 
 CONFIG = Config()
 
 if __name__ == "__main__":
     # print(CONFIG)
-    print(CONFIG.display_config())
+    get_logger().info(CONFIG.display_config())

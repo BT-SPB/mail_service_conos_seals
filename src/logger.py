@@ -2,6 +2,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+# Глобальная переменная для хранения экземпляра логгера
+logger: logging.Logger | None = None
+
 
 class Logger(logging.Logger):
     """Логгер с поддержкой ротации файлов и вывода в консоль.
@@ -28,7 +31,7 @@ class Logger(logging.Logger):
             console_level: int = logging.DEBUG,
     ) -> None:
         """Инициализирует логгер с ротацией файлов и выводом в консоль."""
-        super().__init__("CustomLogger")
+        super().__init__(__name__)
 
         # Проверка корректности входных параметров
         self._validate_log_level(file_level)
@@ -87,4 +90,30 @@ class Logger(logging.Logger):
             )
 
 
-logger = Logger(log_file=Path(__file__).resolve().parent.parent / "logs" / "app.log")
+def init_logger(*args, **kwargs) -> logging.Logger | None:
+    """Инициализирует глобальный логгер.
+
+    Создаёт экземпляр класса Logger и присваивает его глобальной переменной logger.
+    Должна вызываться только один раз из config.py после определения пути для логов.
+    Передаёт log_file и дополнительные параметры в конструктор Logger.
+    """
+    global logger
+    if logger is None:
+        logger = Logger(*args, **kwargs)
+
+
+def get_logger() -> Logger:
+    """Получает инициализированный глобальный логгер.
+
+    Используется только в config.py для безопасного доступа к логгеру.
+    В других модулях следует использовать прямой импорт logger.
+
+    Returns:
+        Logger: Инициализированный экземпляр логгера.
+
+    Raises:
+        RuntimeError: Если логгер не был инициализирован.
+    """
+    if logger is None:
+        raise RuntimeError("Логгер не инициализирован. Сначала вызовите init_logger().")
+    return logger
