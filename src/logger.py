@@ -2,9 +2,6 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-# Глобальная переменная для хранения экземпляра логгера
-logger: logging.Logger | None = None
-
 
 class Logger(logging.Logger):
     """Логгер с поддержкой ротации файлов и вывода в консоль.
@@ -90,7 +87,11 @@ class Logger(logging.Logger):
             )
 
 
-def init_logger(*args, **kwargs) -> logging.Logger | None:
+# Глобальная переменная для хранения экземпляра логгера
+logger: Logger | None = None
+
+
+def init_logger(*args, **kwargs) -> None:
     """Инициализирует глобальный логгер.
 
     Создаёт экземпляр класса Logger и присваивает его глобальной переменной logger.

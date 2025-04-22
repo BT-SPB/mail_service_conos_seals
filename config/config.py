@@ -1,6 +1,6 @@
 import os
-from pathlib import Path
 from io import StringIO
+from pathlib import Path
 
 from dotenv import load_dotenv
 from cryptography.fernet import Fernet
@@ -16,8 +16,12 @@ class Config(BaseSettings):
     к серверам IMAP/SMTP, списки email для уведомлений, а также методы для инициализации
     директорий и загрузки зашифрованных настроек.
 
+    Для переопределения настроек, заданных по умолчанию, можно создать файл `config.env`
+    в директории `CONFIG_DIR`. Значения из этого файла будут иметь приоритет над значениями,
+    указанными в коде конфигурации.
+
     Args:
-        CONFIG_DIR (Path): Путь к директории конфигурации, вычисляется автоматически
+        CONFIG_DIR (Path): Путь к директории конфигурации, вычисляется как родительская директория текущего файла
         WORK_DIR (Path): Рабочая директория проекта, по умолчанию корень проекта
         IN_FOLDER (Path | None): Входная папка для обработки файлов
         OUT_OCR_FOLDER (Path | None): Папка для результатов OCR
@@ -38,9 +42,6 @@ class Config(BaseSettings):
         enable_send_production_data (bool): Флаг для включения отправки номеров пломб и файлов коносаментов в ЦУП
         valid_images (set[str]): Допустимые расширения файлов изображений
         valid_ext (set[str]): Допустимые расширения всех файлов (включая PDF)
-
-    Returns:
-        None
     """
     # Путь к директории конфигурации, вычисляется как родительская директория текущего файла
     CONFIG_DIR: Path = Path(__file__).resolve().parent

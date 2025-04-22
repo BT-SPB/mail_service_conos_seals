@@ -195,7 +195,7 @@ def transfer_files(
             src_path = Path(file_path)
             # Проверяем, существует ли исходный файл
             if not src_path.is_file():
-                # logger.print(f"Файл не существует: {src_path}")
+                # logger.info(f"Файл не существует: {src_path}")
                 continue
 
             # Формируем новый путь
@@ -205,11 +205,11 @@ def transfer_files(
             file_operation(src_path, new_path)
 
         except PermissionError as e:
-            logger.print(f"Нет прав доступа: {e} - {file_path}")
+            logger.error(f"Нет прав доступа: {e} - {file_path}")
         except shutil.Error as e:
-            logger.print(f"Ошибка операции ({operation}): {e} - {file_path}")
+            logger.error(f"Ошибка операции ({operation}): {e} - {file_path}")
         except Exception as e:
-            logger.print(f"Неизвестная ошибка: {e} - {file_path}")
+            logger.error(f"Неизвестная ошибка: {e} - {file_path}")
 
 
 def is_directory_empty(path: Path | str) -> bool:

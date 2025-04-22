@@ -89,7 +89,6 @@ def main() -> None:
             logger.error(f"⛔ Ошибка при попытке завершения работы: {e}\n{traceback.format_exc()}")
 
 
-
 def main_fallback() -> None:
     """Запускает упрощенный мониторинг почты и папок в аварийном режиме.
 
