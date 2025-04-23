@@ -5,8 +5,9 @@ import traceback
 from pathlib import Path
 from email.message import Message
 from email.utils import parseaddr
+import ssl
 
-from imapclient import IMAPClient
+from imapclient import IMAPClient, exceptions
 
 from config import CONFIG
 from src.logger import logger
@@ -98,6 +99,8 @@ class EmailMonitor:
             # Выполняем logout для корректного завершения сессии
             self.server.logout()
             logger.info("🔔 IMAP-соединение закрыто")
+        except (exceptions.IMAPClientError, OSError, ssl.SSLError) as e:
+            logger.warning(f"⚠️ IMAP logout завершился с ошибкой (возможно ожидаемо): {e}")
         except Exception as e:
             logger.error(f"⛔ Ошибка при закрытии IMAP-соединения: {e}\n{traceback.format_exc()}")
         finally:
@@ -107,9 +110,12 @@ class EmailMonitor:
         """
         Завершает мониторинг, закрывает соединение и сбрасывает флаг активности.
         """
+        if not self.running:
+            logger.debug("🔔 Мониторинг почты УЖЕ остановлен")
+            return
         self.running = False
         self.disconnect()
-        logger.info("🔔 Мониторинг остановлен")
+        logger.info("🔔 Мониторинг почты остановлен")
 
     def process_unseen_email_inbox(self) -> None:
         """
@@ -264,18 +270,21 @@ class EmailMonitor:
                         last_check_time = time.time()
 
                 except Exception as e:
+                    if not self.running:
+                        # Прерывание в момент остановки — не логируем
+                        break
+
                     logger.error(f"⛔ Ошибка в IDLE-цикле: {e}\n{traceback.format_exc()}")
                     self.disconnect()
                     time.sleep(5)  # Даем время серверу перед переподключением
                     if self.running:
                         self.connect()
+                        logger.info("🔄 Соединение восстановлено после ошибки")
                         self.process_unseen_email_inbox()  # После переподключения сразу выполняем проверку
                         last_check_time = time.time()
 
         except Exception as e:
             logger.error(f"⛔ Критическая ошибка мониторинга: {e}\n{traceback.format_exc()}")
-        finally:
-            self.stop()
 
 
 # --- ЗАПАСНАЯ ФУНКЦИЯ ---

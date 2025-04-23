@@ -78,6 +78,25 @@ class FolderWatcher(FileSystemEventHandler):
         self.event_detected = True
         self.last_event_time = time.time()
 
+    def stop(self) -> None:
+        """Останавливает мониторинг директории и завершает наблюдатель.
+
+        Безопасно останавливает наблюдатель файловой системы, дожидается завершения его работы
+        и сбрасывает состояние. Если наблюдатель уже остановлен, метод не выполняет действий.
+        """
+        if not self.observer:
+            logger.debug("🔔 Мониторинг директории УЖЕ остановлен")
+            return
+
+        try:
+            self.observer.stop()
+            self.observer.join()
+            logger.info("🔔 Мониторинг директории остановлен")
+        except Exception as e:
+            logger.error(f"⛔ Ошибка при остановке наблюдателя: {e}\n{traceback.format_exc()}")
+        finally:
+            self.observer = None
+
     def monitor(self):
         """Основной цикл мониторинга и обработки изменений.
 
@@ -98,6 +117,7 @@ class FolderWatcher(FileSystemEventHandler):
                 f"📁 Мониторинг директории (принудительный таймаут {self.forced_timeout:.0f} сек): {self.folder_path}")
         except Exception as e:
             logger.error(f"⛔ Ошибка запуска наблюдателя: {e}\n{traceback.format_exc()}")
+            self.stop()
             return
 
         try:
@@ -143,13 +163,5 @@ class FolderWatcher(FileSystemEventHandler):
                         self.is_processing = False
                         last_callback_time = current_time
 
-        except KeyboardInterrupt:
-            logger.info("✔️ Мониторинг остановлен пользователем")
         except Exception as e:
             logger.error(f"⛔ Критическая ошибка в мониторинге: {e}\n{traceback.format_exc()}")
-        finally:
-            # Гарантируем корректное завершение наблюдателя
-            if self.observer:
-                self.observer.stop()
-                self.observer.join()
-            logger.info("✔️ Мониторинг директории завершен")
