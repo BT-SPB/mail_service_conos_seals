@@ -1,3 +1,4 @@
+import traceback
 from typing import Callable
 from functools import wraps
 import base64
@@ -113,7 +114,7 @@ def cup_http_request(
             else:
                 logger.warning(f"⚠️ Ошибка {response.status_code} при запросе: {url} - {response.reason}")
         except Exception as e:
-            logger.error(f"⛔ Исключение при запросе к {url}: {e}")
+            logger.error(f"⛔ Исключение при запросе к {url}: {e}\n{traceback.format_exc()}")
 
 
 def send_production_data(
@@ -213,7 +214,7 @@ def send_production_data(
                     logger.warning(f"⚠️ Ошибка {response.status_code}: {response.text}")
 
             except requests.exceptions.RequestException as e:
-                logger.warning(f"⛔ Исключение при отправке на {url}: {e}")
+                logger.warning(f"⛔ Исключение при отправке на {url}: {e}\n{traceback.format_exc()}")
 
         if not success:
             all_success = False

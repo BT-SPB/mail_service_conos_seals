@@ -40,7 +40,7 @@ class Logger(logging.Logger):
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Настраиваем формат сообщений
-        log_format = '%(asctime)s - %(levelname)s - %(message)s'
+        log_format = '%(asctime)s [%(levelname)7s] - %(message)s'
         date_format = '%Y-%m-%d %H:%M:%S'
         formatter = logging.Formatter(log_format, datefmt=date_format)
 

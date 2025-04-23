@@ -46,10 +46,10 @@ def process_output_ocr(
 
     # Логируем информацию о найденных директориях
     if not folders_for_processing:
-        logger.info("🗿 Директории для обработки не найдены")
+        logger.info("➖ Новых директорий для обработки нет")
         return
 
-    logger.info(f"🔍 Обнаружено директорий для обработки: {len(folders_for_processing)}")
+    logger.info(f"📁 Обнаружено директорий для обработки: {len(folders_for_processing)}")
 
     # Последовательно обрабатываем каждую директорию
     for folder in folders_for_processing:
@@ -208,7 +208,7 @@ def process_output_ocr(
                     f"containers:",
                     *[f"    - {cont['container']}: {cont['seals']}" for cont in json_data["containers"]]
                 ])
-                logger.info(f"✔️ Файл обработан успешно: {source_file}\n{success_message}")
+                logger.info(f"✔️ Файл обработан успешно: {source_file}")
                 metadata["successes"].append(success_message)
                 transfer_files([source_file, json_file], success_folder, "move")
                 success_flag = True
