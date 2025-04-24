@@ -177,6 +177,8 @@ def extract_attachments(email_message: Message) -> list[tuple[str, bytes]]:
                 # Добавляем кортеж (имя файла, содержимое) в список вложений
                 attachments.append((filename, payload))
 
+    # Сортируем вложения по имени файла
+    attachments.sort(key=lambda x: x[0])
     return attachments
 
 

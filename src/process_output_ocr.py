@@ -113,16 +113,28 @@ def process_output_ocr(
 
                 # Читаем и валидируем данные из JSON
                 json_data: dict = read_json(json_file)
-                if not (
-                        json_data.get("bill_of_lading") and
-                        json_data.get("containers") and
-                        all(
-                            isinstance(cont, dict) and cont.get("container") and cont.get("seals")
-                            for cont in json_data["containers"]
-                        )
+
+                if not json_data.get("bill_of_lading"):
+                    warning_message = "Не удалось получить номер коносамента."
+                    logger.info(f"⚠️ {warning_message}: {json_file}")
+                    metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
+                    transfer_files([source_file, json_file], error_folder, "move")
+                    continue
+
+                if not json_data.get("containers"):
+                    warning_message = "Не удалось получить ни одного контейнера."
+                    logger.info(f"⚠️ {warning_message}: {json_file}")
+                    metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
+                    transfer_files([source_file, json_file], error_folder, "move")
+                    continue
+
+                if not all(
+                        isinstance(cont, dict) and cont.get("container") and cont.get("seals")
+                        for cont in json_data["containers"]
                 ):
-                    logger.info(f"⚠️ Отсутствуют обязательные поля в {json_file}")
-                    metadata["errors"].append(f"{source_file_name}: Ошибка распознавания.")
+                    warning_message = "Не удалось получить номер пломбы для одного или нескольких контейнеров."
+                    logger.info(f"⚠️ {warning_message}: {json_file}")
+                    metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
                     transfer_files([source_file, json_file], error_folder, "move")
                     continue
 
@@ -132,9 +144,10 @@ def process_output_ocr(
                     "TransactionNumberFromBillOfLading", json_data["bill_of_lading"]
                 )
                 if not (transaction_numbers and isinstance(transaction_numbers, list)):
-                    warning_message = ("Не удалось получить номер транзакции из ЦУП. "
-                                       "Возможно был неверно распознан номер коносамента.")
-                    logger.warning(f"❌ {warning_message}: {json_data['bill_of_lading']} ({json_file})")
+                    warning_message = (f"Не удалось получить номер транзакции из ЦУП. "
+                                       f"Возможно был неверно распознан номер коносамента "
+                                       f"({json_data['bill_of_lading']}).")
+                    logger.warning(f"⚠️ {warning_message}: {json_data['bill_of_lading']} ({json_file})")
                     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
                     transfer_files([source_file, json_file], error_folder, "move")
                     continue
@@ -163,7 +176,7 @@ def process_output_ocr(
                 # Проверяем успешность получения номеров контейнеров из ЦУП
                 if not all(container_numbers_cup):
                     warning_message = "Не удалось получить номера контейнеров по номеру сделки из ЦУП"
-                    logger.warning(f"❌ {warning_message}: {transaction_numbers} ({source_file})")
+                    logger.warning(f"⚠️ {warning_message}: {transaction_numbers} ({source_file})")
                     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
                     transfer_files([source_file, json_file], error_folder, "move")
                     continue
@@ -175,19 +188,19 @@ def process_output_ocr(
                 # Проверяем, есть ли пересечение между наборами номеров контейнеров
                 if not container_numbers_cup_set & container_numbers_ocr_set:
                     warning_message = "Номера контейнеров из OCR не пересекаются с номерами из ЦУП"
-                    logger.warning(f"❌ {warning_message}: {transaction_numbers} ({source_file})")
+                    logger.warning(f"⚠️ {warning_message}: {transaction_numbers} ({source_file})")
                     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
                     transfer_files([source_file, json_file], error_folder, "move")
                     continue
 
-                # Проверяем наличие недостающих контейнеров
+                # Проверяем наличие контейнеров, которые были распознаны, но отсутствуют в ЦУП
                 container_numbers_difference = container_numbers_ocr_set - container_numbers_cup_set
                 if container_numbers_difference:
                     # Отправляем сообщение, но не прерываем цикл, так как
                     # некоторые контейнеры были успешно распознаны
-                    warning_message = (f"Были распознаны номера контейнеров, которые отсуствуют в ЦУП: "
+                    warning_message = (f"Были распознаны номера контейнеров, которые отсутствуют в ЦУП: "
                                        f"{container_numbers_difference}")
-                    logger.warning(f"❌ {warning_message}: {transaction_numbers} ({source_file})")
+                    logger.warning(f"⚠️ {warning_message}: {transaction_numbers} ({source_file})")
                     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
                     transfer_files([source_file, json_file], error_folder, "move")
 
@@ -206,7 +219,9 @@ def process_output_ocr(
                     f"bill_of_lading: {json_data['bill_of_lading']}",
                     f"transaction_numbers: {json_data['transaction_numbers']}",
                     f"containers:",
-                    *[f"    - {cont['container']}: {cont['seals']}" for cont in json_data["containers"]]
+                    *[f"    - {cont['container']}: {cont['seals']}"
+                      for cont in json_data["containers"] if
+                      cont["container"] not in container_numbers_difference]
                 ])
                 logger.info(f"✔️ Файл обработан успешно: {source_file}")
                 metadata["successes"].append(success_message)

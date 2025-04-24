@@ -6,8 +6,8 @@ import base64
 import requests
 from requests.auth import HTTPBasicAuth
 
-from src.logger import logger
 from config import CONFIG
+from src.logger import logger
 
 KAPPA_URL = "http://kappa5.group.ru:81/ca/hs/interaction/"
 LOCAL_URL = "http://10.10.0.10:81/ca/hs/interaction/"
@@ -224,14 +224,14 @@ def send_production_data(
 
 
 if __name__ == "__main__":
-    # from src.utils import read_json
+    from src.utils import read_json
+
+    data = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\КС_FBCL10930(pdf).json")
+    send_production_data(data)
+
+    # func = r'TransactionNumberFromBillOfLading'
+    # arg = r'AKKALI24056510'
+    # tn = cup_http_request(func, arg)
     #
-    # data = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS\test_1c.json")
-    # send_production_data(data)
-
-    func = r'TransactionNumberFromBillOfLading'
-    arg = r'KCO000006945'
-    tn = cup_http_request(func, arg)
-
-    func = "GetTransportPositionNumberByTransactionNumber"
-    cup_http_request(func, tn[-1].split()[0], encode=False)
+    # func = "GetTransportPositionNumberByTransactionNumber"
+    # cup_http_request(func, tn[-1].split()[0], encode=False)
