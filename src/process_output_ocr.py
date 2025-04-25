@@ -237,8 +237,11 @@ def process_output_ocr(
             # Обрабатываем ошибки: копируем/перемещаем метаданные и подготавливаем email уведомление
             if metadata["errors"]:
                 # Определяем действие с метаданными: копирование или перемещение
-                metadata_action: str = "copy2" if success_flag else "move"
-                transfer_files(folder / "metadata.json", error_folder, metadata_action)
+                transfer_files(
+                    folder / "metadata.json",
+                    error_folder,
+                    operation="copy2" if success_flag else "move"
+                )
 
                 # Формируем текст письма с перечислением ошибок
                 error_list = "\n".join(

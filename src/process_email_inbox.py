@@ -1,5 +1,5 @@
 import email
-import imaplib
+# import imaplib
 import time
 import traceback
 from pathlib import Path
@@ -91,8 +91,9 @@ class EmailMonitor:
         try:
             # Завершаем IDLE, если он активен
             self.server.idle_done()
-        except Exception:
+        except Exception as e:
             # Ошибки IDLE завершения не критичны — продолжаем отключение
+            logger.warning(f"⚠️ Неудачное завершение IDLE: {e}")
             pass
 
         try:

@@ -1,9 +1,10 @@
 import re
 import json
+import base64
+import binascii
+import shutil
 from pathlib import Path
 from typing import Any, Iterable, Literal
-import base64
-import shutil
 
 from src.logger import logger
 
@@ -23,7 +24,7 @@ def write_json(file_path: Path | str, data: Any) -> None:
     file_path = Path(file_path)
     file_path.parent.mkdir(parents=True, exist_ok=True)
     with open(file_path, mode="w", encoding="utf-8") as file:
-        json.dump(data, file, indent=4, ensure_ascii=False)
+        json.dump(data, file, indent=4, ensure_ascii=False)  # type: ignore
 
 
 def read_json(file_path: Path | str) -> dict:
@@ -66,9 +67,11 @@ def file_to_base64(file_path: str | Path) -> str:
         return base64_encoded
 
     except FileNotFoundError:
-        raise FileNotFoundError(f"Файл не найден: {file_path}")
-    except IOError as e:
-        raise IOError(f"Ошибка при чтении файла {file_path}: {str(e)}")
+        logger.exception(f"Файл не найден: {file_path}")
+        raise
+    except OSError as e:
+        logger.exception(f"Ошибка при чтении файла {file_path}: {e}")
+        raise
 
 
 def base64_to_file(base64_string: str, output_path: str | Path) -> None:
@@ -90,10 +93,12 @@ def base64_to_file(base64_string: str, output_path: str | Path) -> None:
         with open(output_path, 'wb') as file:
             file.write(file_data)
 
-    except base64.binascii.Error:
-        raise ValueError("Неверный формат строки base64")
-    except IOError as e:
-        raise IOError(f"Ошибка при записи файла {output_path}: {str(e)}")
+    except (ValueError, binascii.Error) as e:
+        logger.exception(f"Неверный формат строки base64: {e}")
+        raise
+    except OSError as e:
+        logger.exception(f"Ошибка при записи файла {output_path}: {e}")
+        raise
 
 
 # --- FILES ---

@@ -71,7 +71,8 @@ class Logger(logging.Logger):
         """
         self.info(message)
 
-    def _validate_log_level(self, level: int) -> None:
+    @staticmethod
+    def _validate_log_level(level: int) -> None:
         """Проверяет корректность уровня логирования."""
         valid_levels = {
             logging.DEBUG, logging.INFO, logging.WARNING,

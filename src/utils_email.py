@@ -139,6 +139,15 @@ def extract_html_content(email_message: Message) -> str | None:
     return None
 
 
+def decode_filename(filename_raw: str) -> str:
+    """Декодирует имя файла, если оно содержит не-ASCII символы."""
+    decoded_parts = decode_header(filename_raw)
+    return ''.join([
+        part.decode(encoding or 'utf-8') if isinstance(part, bytes) else part
+        for part, encoding in decoded_parts
+    ])
+
+
 def extract_attachments(email_message: Message) -> list[tuple[str, bytes]]:
     """
     Извлекает вложения из email-сообщения.
@@ -149,15 +158,6 @@ def extract_attachments(email_message: Message) -> list[tuple[str, bytes]]:
     Returns:
         list[tuple[str, bytes]]: Список кортежей, содержащих имя файла и его содержимое в байтах.
     """
-
-    def decode_filename(filename_raw: str) -> str:
-        """Декодирует имя файла, если оно содержит не-ASCII символы."""
-        decoded_parts = decode_header(filename_raw)
-        return ''.join([
-            part.decode(encoding or 'utf-8') if isinstance(part, bytes) else part
-            for part, encoding in decoded_parts
-        ])
-
     attachments: list[tuple[str, bytes]] = []
 
     # Проверяем, является ли сообщение многосоставным
@@ -224,7 +224,7 @@ def send_email(
         return
 
     format_email_log = (
-        f"\nИСХОДЯЩИЙ EMAIL:\n"
+        f"📧 ИСХОДЯЩИЙ EMAIL:\n"
         f"{'-' * 80}\n"
         f"Получатели: {', '.join(recipients)}\n"
         f"Тема: {subject}\n"

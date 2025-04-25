@@ -130,7 +130,7 @@ def send_production_data(
     при неудаче — повторяет попытку на резервный.
 
     Args:
-        data (dict): Словарь с производственными данными, которые необходимо отправить.
+        data (dict): Словарь с производственными данными, которые необходимо отправить
         Ожидается следующая структура:
         {
             "bill_of_lading": str,            # Номер коносамента
@@ -222,16 +222,15 @@ def send_production_data(
 
     return all_success
 
+# if __name__ == "__main__":
+#     from src.utils import read_json
+#
+#     data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\КС_FBCL10930(pdf).json")
+#     send_production_data(data_json)
 
-if __name__ == "__main__":
-    from src.utils import read_json
-
-    data = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\КС_FBCL10930(pdf).json")
-    send_production_data(data)
-
-    # func = r'TransactionNumberFromBillOfLading'
-    # arg = r'AKKALI24056510'
-    # tn = cup_http_request(func, arg)
-    #
-    # func = "GetTransportPositionNumberByTransactionNumber"
-    # cup_http_request(func, tn[-1].split()[0], encode=False)
+# func = r'TransactionNumberFromBillOfLading'
+# arg = r'AKKALI24056510'
+# tn = cup_http_request(func, arg)
+#
+# func = "GetTransportPositionNumberByTransactionNumber"
+# cup_http_request(func, tn[-1].split()[0], encode=False)

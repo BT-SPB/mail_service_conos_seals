@@ -165,12 +165,13 @@ class Config(BaseSettings):
             __context: Контекст инициализации, передаваемый pydantic (не используется).
         """
         # Установка путей к рабочим директориям относительно WORK_DIR
-        WORKFLOW_DIR = self.WORK_DIR / "WORKFLOW"
-        self.IN_FOLDER = WORKFLOW_DIR / "IN"
-        self.OUT_OCR_FOLDER = WORKFLOW_DIR / "OUT_OCR"
-        self.SUCCESS_FOLDER = WORKFLOW_DIR / "SUCCESS"
+        workflow_dir = self.WORK_DIR / "WORKFLOW"
+
+        self.IN_FOLDER = workflow_dir / "IN"
+        self.OUT_OCR_FOLDER = workflow_dir / "OUT_OCR"
+        self.SUCCESS_FOLDER = workflow_dir / "SUCCESS"
         self.ERROR_FOLDER = self.WORK_DIR / "ERROR"
-        self.LOG_FOLDER = WORKFLOW_DIR / "logs"
+        self.LOG_FOLDER = workflow_dir / "logs"
 
         # Инициализация логгера после инициализации директории для логов
         init_logger(log_file=self.LOG_FOLDER / "rates_mail.log")
