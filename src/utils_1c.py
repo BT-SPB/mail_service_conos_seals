@@ -1,7 +1,8 @@
+import copy
+import base64
 import traceback
 from typing import Callable
 from functools import wraps
-import base64
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -118,7 +119,7 @@ def cup_http_request(
 
 
 def send_production_data(
-        data: dict,
+        data_source: dict,
         kappa: bool = False,
         user_1c: str = CONFIG.USER_1C,
         password_1c: str = CONFIG.PASSWORD_1C,
@@ -130,7 +131,7 @@ def send_production_data(
     при неудаче — повторяет попытку на резервный.
 
     Args:
-        data (dict): Словарь с производственными данными, которые необходимо отправить
+        data_source (dict): Словарь с производственными данными, которые необходимо отправить
         Ожидается следующая структура:
         {
             "bill_of_lading": str,            # Номер коносамента
@@ -171,6 +172,8 @@ def send_production_data(
     Returns:
         True - при успешной отправке всех данных на сервер. False - при неудаче хотя бы одной отправки.
     """
+    data = copy.deepcopy(data_source)
+
     # Название функции
     function = "SendProductionDataToTransaction"
     # Определяем порядок серверов в зависимости от флага kappa
@@ -227,6 +230,8 @@ def send_production_data(
 #
 #     data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\КС_FBCL10930(pdf).json")
 #     send_production_data(data_json)
+#
+#     print(data_json)
 
 # func = r'TransactionNumberFromBillOfLading'
 # arg = r'AKKALI24056510'
