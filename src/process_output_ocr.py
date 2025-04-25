@@ -93,9 +93,9 @@ def process_output_ocr(
                 continue
 
             # Обрабатываем файлы (исходный и JSON), указанные в метаданных
-            for source_file_name, json_file_name in metadata["files"]:
+            for source_file_name in metadata["files"]:
                 source_file: Path = folder / source_file_name
-                json_file: Path = folder / json_file_name
+                json_file: Path = source_file.with_name(source_file.name + ".json")
 
                 # Проверяем существование исходного файла
                 if not source_file.is_file():
@@ -155,8 +155,8 @@ def process_output_ocr(
                 # Обновляем JSON-данные дополнительной информацией
                 json_data.update({
                     "transaction_numbers": transaction_numbers,
-                    "source_file_base64": file_to_base64(source_file),
                     "source_file_name": f"КС_{json_data['bill_of_lading']}{source_file.suffix}",
+                    "source_file_base64": file_to_base64(source_file),
                 })
                 # Сохраняем обновленный JSON-файл
                 write_json(json_file, json_data)

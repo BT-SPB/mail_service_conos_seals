@@ -133,14 +133,14 @@ def send_production_data(
         data (dict): Словарь с производственными данными, которые необходимо отправить.
         Ожидается следующая структура:
         {
-            "bill_of_lading": str,           # Номер коносамента
+            "bill_of_lading": str,            # Номер коносамента
             "transaction_numbers": list[str], # Список номеров и дат транзакций, полученных с помощью TransactionNumberFromBillOfLading
-            "source_file_name": str,         # Название исходного файла
-            "source_file_base64": str,       # Исходный файл, закодированный в base64
-            "containers": [                  # Список контейнеров
+            "source_file_name": str,          # Название исходного файла
+            "source_file_base64": str,        # Исходный файл, закодированный в base64
+            "containers": [                   # Список контейнеров
                 {
-                    "container": str,        # Номер контейнера
-                    "seals": list[str]       # Список пломб (одна или несколько строк)
+                    "container": str,         # Номер контейнера
+                    "seals": list[str]        # Список пломб (одна или несколько строк)
                 },
                 ...
             ]
