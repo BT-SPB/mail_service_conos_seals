@@ -99,68 +99,91 @@ def base64_to_file(base64_string: str, output_path: str | Path) -> None:
 # --- FILES ---
 
 def sanitize_pathname(
-        name: str,
+        path: Path | str,
         is_file: bool = True,
-        parent_dir: str | Path = ".",
         max_length: int = 50,
 ) -> Path:
-    """Очищает имена файлов или директорий, обеспечивая уникальность и совместимость.
+    """
+    Очищает и нормализует имя файла или директории, обеспечивая его допустимость,
+    читаемость и уникальность в рамках файловой системы.
+
+    Функция удаляет недопустимые символы, приводит имя к допустимой форме,
+    обрезает его до заданной длины, избегает зарезервированных имен Windows
+    и гарантирует уникальность имени в пределах директории.
 
     Args:
-        name: Исходное имя файла или директории
-        is_file: Указывает, является ли путь файлом (True) или директорией (False)
-        parent_dir: Родительская директория для проверки конфликтов
-        max_length: Максимальная длина результирующего имени
+        path: Исходный путь к файлу или директории (строка или объект Path)
+        is_file: Флаг, указывающий, является ли путь файлом (True) или директорией (False)
+        max_length: Максимальная допустимая длина имени (включая расширение для файлов)
 
     Returns:
-        Path: Очищенное и уникальное имя в виде объекта Path.
+        Path: Объект Path с безопасным и уникальным именем.
     """
-    # Замена недопустимых символов и удаление лишних пробелов
-    clean_name = re.sub(r'[<>:"/\\|?*]|\x00-\x1F', " ", name).strip()
-    clean_name = re.sub(r"\s+", "_", clean_name)
+    # Преобразуем входной путь в объект Path для унифицированной обработки
+    path = Path(path)
+    # Извлекаем имя файла или директории из пути
+    original_name = path.name
+
+    # Удаляем недопустимые символы и управляющие коды (0x00–0x1F), заменяя их на пробелы
+    clean_name = re.sub(r'[<>:"/\\|?*\x00-\x1F]', " ", original_name)
+    # Заменяем все последовательности пробелов и пробельных символов на одинарное подчёркивание
+    clean_name = re.sub(r"\s+", "_", clean_name.strip())
+
+    # Проверяем, что имя после очистки не пустое
     if not clean_name:
         raise ValueError("После очистки имя не может быть пустым")
 
-    # Дополнительная обработка в зависимости от типа (файл или директория)
-    if is_file:
-        path = Path(clean_name)
-        # приводим расширение файла к нижнему регистру
-        clean_name = path.stem + path.suffix.lower()
-    else:
-        # Для директорий убираем точки в начале и конце
-        clean_name = clean_name.strip('.')
+    # Заменяем имя в оригинальном пути на очищенное
+    path = path.with_name(clean_name)
 
-    # Ограничиваем длину имени
+    # Обрабатываем имя в зависимости от типа пути (файл или директория)
+    if is_file:
+        # Для файлов: имя без расширения (stem) + расширение в нижнем регистре
+        clean_name = f"{path.stem}{path.suffix.lower()}"
+    else:
+        # Для директорий: удаляем точки в начале и конце
+        clean_name = path.name.strip('.')
+
+    # Обрезаем имя, если оно превышает заданный лимит по длине
     if len(clean_name) > max_length:
         if is_file:
-            path = Path(clean_name)
-            name = path.stem  # Имя без расширения
-            ext = path.suffix  # Расширение с точкой
-            max_name_length = max_length - len(ext)
-            clean_name = name[:max_name_length] + ext
+            # Для файлов сохраняем расширение, урезая только имя
+            stem, ext = Path(clean_name).stem, Path(clean_name).suffix
+            # Если расширение файла занимает всю допустимую длину,
+            # мы всё равно должны оставить хотя бы 1 символ в имени.
+            max_stem_len = max(1, max_length - len(ext))
+            clean_name = f"{stem[:max_stem_len]}{ext}"
         else:
+            # Для директорий просто обрезаем имя до максимальной длины
             clean_name = clean_name[:max_length]
 
     # Проверка на зарезервированные имена Windows
-    reserved_names = {'CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4',
-                      'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3',
-                      'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'}
-    if clean_name.upper().split('.')[0] in reserved_names:
+    reserved_names = {
+        'CON', 'PRN', 'AUX', 'NUL',
+        *(f'COM{i}' for i in range(1, 10)),
+        *(f'LPT{i}' for i in range(1, 10)),
+    }
+    if clean_name.split('.')[0].upper() in reserved_names:
+        # Добавляем подчеркивание в начало имени для избежания конфликта
         clean_name = f"_{clean_name}"
 
-    # Обеспечение уникальности имени в директории
-    parent_path = Path(parent_dir)
+    # Проверка на уникальность имени в родительской директории
+    parent_path = path.parent
     final_name = clean_name
     counter = 1
     while (parent_path / final_name).exists():
+        # Если имя уже существует, добавляем суффикс с номером
         if is_file:
-            path = Path(clean_name)
-            final_name = f"{path.stem}_{counter}{path.suffix}"
+            # Для файлов сохраняем расширение и добавляем суффикс к имени
+            stem, ext = Path(clean_name).stem, Path(clean_name).suffix
+            final_name = f"{stem}_{counter}{ext}"
         else:
+            # Для директорий добавляем суффикс к имени
             final_name = f"{clean_name}_{counter}"
         counter += 1
 
-    return Path(final_name)
+    # Возвращаем финальный путь с уникальным именем
+    return parent_path / final_name
 
 
 def transfer_files(

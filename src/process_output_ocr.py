@@ -61,12 +61,8 @@ def process_output_ocr(
 
             # Формирование путей для папок ошибок и успешной обработки.
             # Используем sanitize_pathname для создания безопасных имен директорий
-            error_folder = CONFIG.ERROR_FOLDER / sanitize_pathname(
-                folder.name, is_file=False, parent_dir=CONFIG.ERROR_FOLDER
-            )
-            success_folder = CONFIG.SUCCESS_FOLDER / sanitize_pathname(
-                folder.name, is_file=False, parent_dir=CONFIG.SUCCESS_FOLDER
-            )
+            error_folder = sanitize_pathname(CONFIG.ERROR_FOLDER / folder.name, is_file=False)
+            success_folder = sanitize_pathname(CONFIG.SUCCESS_FOLDER / folder.name, is_file=False)
 
             # Проверяем целостность метаданных: файл не должен быть пустым,
             # а так же должны присутствовать все ключевые поля
@@ -241,7 +237,7 @@ def process_output_ocr(
             # Обрабатываем ошибки: копируем/перемещаем метаданные и подготавливаем email уведомление
             if metadata["errors"]:
                 # Определяем действие с метаданными: копирование или перемещение
-                metadata_action = "copy2" if success_flag else "move"
+                metadata_action: str = "copy2" if success_flag else "move"
                 transfer_files(folder / "metadata.json", error_folder, metadata_action)
 
                 # Формируем текст письма с перечислением ошибок

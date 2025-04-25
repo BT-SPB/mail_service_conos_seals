@@ -179,12 +179,11 @@ class EmailMonitor:
 
                     # Формирование уникального имени папки на основе даты и времени отправки письма
                     date_time = convert_email_date_to_moscow(metadata["date"], "%y%m%d_%H%M%S")
-
-                    folder_path = CONFIG.IN_FOLDER / sanitize_pathname(
-                        name=f"{date_time}_{metadata['sender']}",
-                        is_file=False,
-                        parent_dir=CONFIG.IN_FOLDER
+                    folder_path = sanitize_pathname(
+                        CONFIG.IN_FOLDER / f"{date_time}_{metadata['sender']}",
+                        is_file=False
                     )
+
                     # Создание директории
                     folder_path.mkdir(exist_ok=True, parents=True)
                     logger.debug(f"✔️ Создана директория: {folder_path}")
@@ -203,9 +202,7 @@ class EmailMonitor:
                             continue
 
                         # Создание безопасного имени файла
-                        file_path = folder_path / sanitize_pathname(
-                            file_name, is_file=True, parent_dir=folder_path
-                        )
+                        file_path = sanitize_pathname(folder_path / file_name, is_file=True)
 
                         try:
                             # Сохраняем файл
@@ -284,150 +281,150 @@ class EmailMonitor:
 
 # --- ЗАПАСНАЯ ФУНКЦИЯ ---
 # Предназначена для упрощенного мониторинга, используя вечный цикл
-def process_email_inbox_simple(
-        email_user: str,
-        email_pass: str,
-        imap_server: str,
-        imap_port: int,
-) -> None:
-    """
-    Обрабатывает новые письма в IMAP-ящике и извлекает вложения.
-    В качестве imap библиотеки стандартная imaplib.
-
-    Функция подключается к почтовому ящику, ищет непрочитанные письма, извлекает их метаданные
-    и вложения, сохраняет вложения в папку IN_FOLDER с уникальным именем, создает файл
-    metadata.json с информацией о письме и файлах. Письма отмечаются как прочитанные после
-    успешной обработки.
-
-    Args:
-        email_user: Адрес электронной почты пользователя
-        email_pass: Пароль от почтового ящика
-        imap_server: Адрес IMAP-сервера
-        imap_port: Порт IMAP-сервера
-
-    Returns:
-        None: Функция не возвращает значений, но сохраняет файлы и метаданные на диск.
-    """
-    # Подключение к IMAP-серверу и выполнение авторизации
-    try:
-        mail = imaplib.IMAP4_SSL(imap_server, imap_port)  # Создание SSL соединения
-        mail.login(email_user, email_pass)  # Авторизация
-        mail.select("INBOX")  # Выбор папки "Входящие"
-        logger.info("Установлено соединение с IMAP-сервером")
-    except Exception as e:
-        logger.error(f"Не удалось подключиться к IMAP-серверу: {e}")
-        return
-
-    try:
-        # Поиск непрочитанных писем
-        status, messages = mail.search(None, "UNSEEN")
-        if status != "OK":
-            logger.error("Ошибка при поиске непрочитанных писем")
-            return
-        message_ids: list[bytes] = messages[0].split()
-        if not message_ids:
-            logger.info("Новых писем нет")
-            return
-
-        logger.info(f"Обнаружено новых писем: {len(message_ids)}")
-
-        # Последовательная обработка каждого письма
-        for msg_id in message_ids:
-            msg_id_str = msg_id.decode('utf-8')
-            try:
-                # Получение письма без отметки как прочитанное
-                status, msg_data = mail.fetch(msg_id_str, 'BODY.PEEK[]')
-                if status != 'OK':
-                    logger.warning(f"Не удалось получить письмо ID {msg_id_str}")
-                    continue
-
-                # Парсинг email-сообщения
-                email_message: Message = email.message_from_bytes(msg_data[0][1])
-
-                # Сбор метаданных письма
-                metadata = {
-                    "subject": decode_subject(email_message.get("Subject", "")),
-                    "sender": parseaddr(email_message.get("From", ""))[1],
-                    "date": email_message.get("Date", "Unknown date"),
-                    "text_content": extract_text_content(email_message) or "No text content",
-                    "files": [],
-                    "errors": []
-                }
-
-                # Извлечение и обработка вложений
-                attachments: list[tuple[str, bytes]] = extract_attachments(email_message)
-
-                if not attachments:
-                    logger.info(f"Письмо от {metadata['sender']} не содержит вложений")
-                    # Отметка письма как прочитанного
-                    mail.store(msg_id_str, "+FLAGS", "\\Seen")
-                    continue
-
-                # Обработка вложений при их наличии
-                logger.info(f"В письме от {metadata['sender']} найдено вложений: {len(attachments)}")
-
-                # Формирование уникального имени папки на основе даты и времени отправки письма
-                date_time = convert_email_date_to_moscow(metadata["date"], "%y%m%d_%H%M%S")
-
-                folder_path = CONFIG.IN_FOLDER / sanitize_pathname(
-                    name=f"{date_time}_{metadata['sender']}",
-                    is_file=False,
-                    parent_dir=CONFIG.IN_FOLDER
-                )
-                # Создание директории
-                folder_path.mkdir(exist_ok=True, parents=True)
-                logger.debug(f"Создана директория: {folder_path}")
-
-                # Последовательная обработка каждого вложения
-                for file_name, content in attachments:
-                    file_ext = Path(file_name).suffix.lower()
-                    if file_ext not in CONFIG.valid_ext:
-                        valid_ext_text = ", ".join(f"'*{ext}'" for ext in CONFIG.valid_ext)
-                        error_msg = (
-                            f"{file_name}: Неподдерживаемое расширение. "
-                            f"Допустимые: {valid_ext_text}."
-                        )
-                        metadata["errors"].append(error_msg)
-                        logger.warning(error_msg)
-                        continue
-
-                    # Создание безопасного имени файла
-                    file_path = folder_path / sanitize_pathname(
-                        file_name, is_file=True, parent_dir=folder_path
-                    )
-
-                    try:
-                        # Сохраняем файл
-                        file_path.write_bytes(content)
-                        # Записываем в метаданные пару: имя исходного файла
-                        # и имя для будущего файла с информацией
-                        metadata["files"].append((
-                            f"{file_path.name}",
-                            f"{file_path.stem}({file_path.suffix[1:]}).json"
-                        ))
-                        logger.info(f"Файл сохранен: {file_path}")
-                    except OSError as e:
-                        logger.error(f"Ошибка при сохранении файла {file_path}: {e}")
-
-                # Сохранение метаданных
-                write_json(folder_path / "metadata.json", metadata)
-                logger.debug(f"Сохранены метаданные: {folder_path / 'metadata.json'}")
-
-                # Отмечаем письмо как прочитанное после успешной обработки
-                mail.store(msg_id_str, '+FLAGS', '\\Seen')
-                logger.info(f"Письмо ID {msg_id_str} обработано и отмечено как прочитанное")
-
-            except Exception as e:
-                logger.error(f"Ошибка обработки письма ID {msg_id_str}: {traceback.format_exc()}")
-
-    except Exception:
-        logger.error(f"Произошла ошибка при обработке писем: {traceback.format_exc()}")
-
-    finally:
-        # Безопасное завершение соединения
-        try:
-            mail.close()
-            mail.logout()
-            logger.info("IMAP-соединение закрыто")
-        except Exception as e:
-            logger.error(f"Ошибка при закрытии IMAP-соединения: {e}")
+# def process_email_inbox_simple(
+#         email_user: str,
+#         email_pass: str,
+#         imap_server: str,
+#         imap_port: int,
+# ) -> None:
+#     """
+#     Обрабатывает новые письма в IMAP-ящике и извлекает вложения.
+#     В качестве imap библиотеки стандартная imaplib.
+#
+#     Функция подключается к почтовому ящику, ищет непрочитанные письма, извлекает их метаданные
+#     и вложения, сохраняет вложения в папку IN_FOLDER с уникальным именем, создает файл
+#     metadata.json с информацией о письме и файлах. Письма отмечаются как прочитанные после
+#     успешной обработки.
+#
+#     Args:
+#         email_user: Адрес электронной почты пользователя
+#         email_pass: Пароль от почтового ящика
+#         imap_server: Адрес IMAP-сервера
+#         imap_port: Порт IMAP-сервера
+#
+#     Returns:
+#         None: Функция не возвращает значений, но сохраняет файлы и метаданные на диск.
+#     """
+#     # Подключение к IMAP-серверу и выполнение авторизации
+#     try:
+#         mail = imaplib.IMAP4_SSL(imap_server, imap_port)  # Создание SSL соединения
+#         mail.login(email_user, email_pass)  # Авторизация
+#         mail.select("INBOX")  # Выбор папки "Входящие"
+#         logger.info("Установлено соединение с IMAP-сервером")
+#     except Exception as e:
+#         logger.error(f"Не удалось подключиться к IMAP-серверу: {e}")
+#         return
+#
+#     try:
+#         # Поиск непрочитанных писем
+#         status, messages = mail.search(None, "UNSEEN")
+#         if status != "OK":
+#             logger.error("Ошибка при поиске непрочитанных писем")
+#             return
+#         message_ids: list[bytes] = messages[0].split()
+#         if not message_ids:
+#             logger.info("Новых писем нет")
+#             return
+#
+#         logger.info(f"Обнаружено новых писем: {len(message_ids)}")
+#
+#         # Последовательная обработка каждого письма
+#         for msg_id in message_ids:
+#             msg_id_str = msg_id.decode('utf-8')
+#             try:
+#                 # Получение письма без отметки как прочитанное
+#                 status, msg_data = mail.fetch(msg_id_str, 'BODY.PEEK[]')
+#                 if status != 'OK':
+#                     logger.warning(f"Не удалось получить письмо ID {msg_id_str}")
+#                     continue
+#
+#                 # Парсинг email-сообщения
+#                 email_message: Message = email.message_from_bytes(msg_data[0][1])
+#
+#                 # Сбор метаданных письма
+#                 metadata = {
+#                     "subject": decode_subject(email_message.get("Subject", "")),
+#                     "sender": parseaddr(email_message.get("From", ""))[1],
+#                     "date": email_message.get("Date", "Unknown date"),
+#                     "text_content": extract_text_content(email_message) or "No text content",
+#                     "files": [],
+#                     "errors": []
+#                 }
+#
+#                 # Извлечение и обработка вложений
+#                 attachments: list[tuple[str, bytes]] = extract_attachments(email_message)
+#
+#                 if not attachments:
+#                     logger.info(f"Письмо от {metadata['sender']} не содержит вложений")
+#                     # Отметка письма как прочитанного
+#                     mail.store(msg_id_str, "+FLAGS", "\\Seen")
+#                     continue
+#
+#                 # Обработка вложений при их наличии
+#                 logger.info(f"В письме от {metadata['sender']} найдено вложений: {len(attachments)}")
+#
+#                 # Формирование уникального имени папки на основе даты и времени отправки письма
+#                 date_time = convert_email_date_to_moscow(metadata["date"], "%y%m%d_%H%M%S")
+#
+#                 folder_path = CONFIG.IN_FOLDER / sanitize_pathname(
+#                     name=f"{date_time}_{metadata['sender']}",
+#                     is_file=False,
+#                     parent_dir=CONFIG.IN_FOLDER
+#                 )
+#                 # Создание директории
+#                 folder_path.mkdir(exist_ok=True, parents=True)
+#                 logger.debug(f"Создана директория: {folder_path}")
+#
+#                 # Последовательная обработка каждого вложения
+#                 for file_name, content in attachments:
+#                     file_ext = Path(file_name).suffix.lower()
+#                     if file_ext not in CONFIG.valid_ext:
+#                         valid_ext_text = ", ".join(f"'*{ext}'" for ext in CONFIG.valid_ext)
+#                         error_msg = (
+#                             f"{file_name}: Неподдерживаемое расширение. "
+#                             f"Допустимые: {valid_ext_text}."
+#                         )
+#                         metadata["errors"].append(error_msg)
+#                         logger.warning(error_msg)
+#                         continue
+#
+#                     # Создание безопасного имени файла
+#                     file_path = folder_path / sanitize_pathname(
+#                         file_name, is_file=True, parent_dir=folder_path
+#                     )
+#
+#                     try:
+#                         # Сохраняем файл
+#                         file_path.write_bytes(content)
+#                         # Записываем в метаданные пару: имя исходного файла
+#                         # и имя для будущего файла с информацией
+#                         metadata["files"].append((
+#                             f"{file_path.name}",
+#                             f"{file_path.stem}({file_path.suffix[1:]}).json"
+#                         ))
+#                         logger.info(f"Файл сохранен: {file_path}")
+#                     except OSError as e:
+#                         logger.error(f"Ошибка при сохранении файла {file_path}: {e}")
+#
+#                 # Сохранение метаданных
+#                 write_json(folder_path / "metadata.json", metadata)
+#                 logger.debug(f"Сохранены метаданные: {folder_path / 'metadata.json'}")
+#
+#                 # Отмечаем письмо как прочитанное после успешной обработки
+#                 mail.store(msg_id_str, '+FLAGS', '\\Seen')
+#                 logger.info(f"Письмо ID {msg_id_str} обработано и отмечено как прочитанное")
+#
+#             except Exception as e:
+#                 logger.error(f"Ошибка обработки письма ID {msg_id_str}: {traceback.format_exc()}")
+#
+#     except Exception:
+#         logger.error(f"Произошла ошибка при обработке писем: {traceback.format_exc()}")
+#
+#     finally:
+#         # Безопасное завершение соединения
+#         try:
+#             mail.close()
+#             mail.logout()
+#             logger.info("IMAP-соединение закрыто")
+#         except Exception as e:
+#             logger.error(f"Ошибка при закрытии IMAP-соединения: {e}")
