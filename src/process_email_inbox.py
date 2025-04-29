@@ -161,8 +161,8 @@ class EmailMonitor:
                         "date": email_message.get("Date", "Unknown date"),
                         "text_content": extract_text_content(email_message) or "No text content",
                         "files": [],
-                        "errors": [],
-                        "successes": [],
+                        "errors": {},
+                        "successes": {},
                     }
 
                     # Извлечение и обработка вложений
@@ -194,10 +194,9 @@ class EmailMonitor:
                         if file_ext not in CONFIG.valid_ext:
                             valid_ext_text = ", ".join(f"'*{ext}'" for ext in CONFIG.valid_ext)
                             warning_message = (
-                                f"{file_name}: Неподдерживаемое расширение. "
-                                f"Допустимые: {valid_ext_text}."
+                                f"Неподдерживаемое расширение. Допустимые: {valid_ext_text}."
                             )
-                            metadata["errors"].append(warning_message)
+                            metadata["errors"][file_name] = [warning_message]
                             logger.warning(f"❌ {warning_message}")
                             continue
 
