@@ -226,16 +226,16 @@ def send_production_data(
     return all_success
 
 # if __name__ == "__main__":
-#     from src.utils import read_json
+#     # from src.utils import read_json
+#     #
+#     # data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\КС_FBCL10930(pdf).json")
+#     # send_production_data(data_json)
+#     #
+#     # print(data_json)
 #
-#     data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\КС_FBCL10930(pdf).json")
-#     send_production_data(data_json)
+#     func = r'TransactionNumberFromBillOfLading'
+#     arg = r'AKKNVA25001803'
+#     tn = cup_http_request(func, arg)
 #
-#     print(data_json)
-
-# func = r'TransactionNumberFromBillOfLading'
-# arg = r'AKKALI24056510'
-# tn = cup_http_request(func, arg)
-#
-# func = "GetTransportPositionNumberByTransactionNumber"
-# cup_http_request(func, tn[-1].split()[0], encode=False)
+#     func = "GetTransportPositionNumberByTransactionNumber"
+#     cup_http_request(func, tn[-1].split()[0], encode=False)

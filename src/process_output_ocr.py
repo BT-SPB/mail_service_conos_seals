@@ -139,6 +139,16 @@ def process_output_ocr(
                 transaction_numbers: list[str] = cup_http_request(
                     "TransactionNumberFromBillOfLading", json_data["bill_of_lading"]
                 )
+
+                # Если номер коносамента заканчивается на суффикс `SRV` и сделок по номеру не найдено,
+                # то удаляем суффикс `SRV`.
+                if not transaction_numbers and json_data["bill_of_lading"].endswith("SRV"):
+                    bill_of_lading = json_data["bill_of_lading"].removesuffix("SRV")
+                    transaction_numbers: list[str] = cup_http_request(
+                        "TransactionNumberFromBillOfLading", bill_of_lading
+                    )
+                    json_data["bill_of_lading"] = bill_of_lading
+
                 if not (transaction_numbers and isinstance(transaction_numbers, list)):
                     warning_message = (f"Не удалось получить номер транзакции из ЦУП. "
                                        f"Возможно был неверно распознан номер коносамента "
