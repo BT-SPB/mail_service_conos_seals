@@ -1,5 +1,4 @@
 import smtplib
-import traceback
 import chardet
 from typing import Literal, List, Optional, Tuple, Union
 from collections.abc import Sequence
@@ -255,9 +254,7 @@ def send_email(
 
     except smtplib.SMTPException as smtp_error:
         # Обработка специфичных ошибок SMTP (например, неверные учетные данные)
-        logger.error(f"Ошибка SMTP при отправке письма: {str(smtp_error)}")
-        logger.debug(f"Трассировка ошибки:\n{traceback.format_exc()}")
+        logger.exception(f"⛔ Ошибка SMTP при отправке письма: {smtp_error}")
     except Exception as e:
         # Обработка остальных возможных ошибок
-        logger.error(f"Неожиданная ошибка при отправке письма: {str(e)}")
-        logger.debug(f"Трассировка ошибки:\n{traceback.format_exc()}")
+        logger.exception(f"⛔ Неожиданная ошибка при отправке письма: {e}")

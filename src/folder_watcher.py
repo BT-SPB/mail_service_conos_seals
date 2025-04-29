@@ -1,5 +1,4 @@
 import time
-import traceback
 from pathlib import Path
 from typing import Callable
 
@@ -93,7 +92,7 @@ class FolderWatcher(FileSystemEventHandler):
             self.observer.join()
             logger.info("🔔 Мониторинг директории остановлен")
         except Exception as e:
-            logger.error(f"⛔ Ошибка при остановке наблюдателя: {e}\n{traceback.format_exc()}")
+            logger.exception(f"⛔ Ошибка при остановке наблюдателя: {e}")
         finally:
             self.observer = None
 
@@ -114,9 +113,10 @@ class FolderWatcher(FileSystemEventHandler):
             self.observer.schedule(self, str(self.folder_path), recursive=False)
             self.observer.start()
             logger.info(
-                f"📁 Мониторинг директории (принудительный таймаут {self.forced_timeout:.0f} сек): {self.folder_path}")
+                f"📁 Мониторинг директории (принудительный таймаут {self.forced_timeout:.0f} сек): "
+                f"{self.folder_path}")
         except Exception as e:
-            logger.error(f"⛔ Ошибка запуска наблюдателя: {e}\n{traceback.format_exc()}")
+            logger.exception(f"⛔ Ошибка запуска наблюдателя: {e}")
             self.stop()
             return
 
@@ -156,7 +156,7 @@ class FolderWatcher(FileSystemEventHandler):
                         self.callback()
                     except Exception as e:
                         # Логируем ошибки callback, чтобы они не прерывали мониторинг
-                        logger.error(f"⛔ Ошибка в callback: {e}\n{traceback.format_exc()}")
+                        logger.exception(f"⛔ Ошибка в callback: {e}")
                     finally:
                         # Сбрасываем флаги и обновляем время обработки
                         self.event_detected = False
@@ -164,4 +164,4 @@ class FolderWatcher(FileSystemEventHandler):
                         last_callback_time = current_time
 
         except Exception as e:
-            logger.error(f"⛔ Критическая ошибка в мониторинге: {e}\n{traceback.format_exc()}")
+            logger.exception(f"⛔ Критическая ошибка в мониторинге: {e}")

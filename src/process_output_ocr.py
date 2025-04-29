@@ -1,5 +1,4 @@
 import shutil
-import traceback
 from pathlib import Path
 
 from config import CONFIG
@@ -310,5 +309,5 @@ def process_output_ocr(
                 )
 
         except Exception as e:
-            logger.error(f"⛔ Ошибка при обработке директории {folder}: {e}\n{traceback.format_exc()}")
+            logger.exception(f"⛔ Ошибка при обработке директории {folder}: {e}")
             continue
