@@ -162,6 +162,7 @@ class EmailMonitor:
                         "text_content": extract_text_content(email_message) or "No text content",
                         "files": [],
                         "errors": {},
+                        "partial_successes": {},
                         "successes": {},
                     }
 

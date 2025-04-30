@@ -16,6 +16,134 @@ from src.utils_1c import cup_http_request, send_production_data
 from src.utils_email import send_email, convert_email_date_to_moscow
 
 
+def formatted_text_from_data(
+        data: dict[str, list[str]],
+        bullet: str = "•",
+        indent: int = 4,
+        entry_separator: str = "\n\n"
+) -> str:
+    """Форматирует словарь с данными в читаемый текст для отправки по email.
+
+    Создаёт отформатированный текст, где каждый файл нумеруется, за именем файла следует двоеточие,
+    а сообщения отображаются как маркированный список. Многострочные сообщения разбиваются на строки,
+    причём первая строка начинается с маркера (`bullet`), а последующие выравниваются с учётом длины
+    маркера. Записи для файлов разделяются указанным разделителем.
+
+    Args:
+        data: Словарь, где ключи — имена файлов (строки), а значения — списки сообщений (списки строк)
+        bullet: Символ, используемый для маркировки сообщений (по умолчанию "•")
+        indent: Начальный отступ для всех строк, включая номер файла (по умолчанию 4)
+        entry_separator: Строка, разделяющая записи для разных файлов (по умолчанию "\n\n")
+
+    Returns:
+        str: Отформатированная строка с пронумерованными файлами и сообщениями. Если словарь пуст или
+            все списки сообщений пусты, возвращается пустая строка.
+    """
+    if not data:
+        return ""
+
+    # Формируем строки отступов
+    base_indent_spaces = " " * indent  # Отступ для номера файла и имени
+    bullet_indent_spaces = " " * len(bullet)
+
+    # Список для хранения отформатированных записей для каждого файла
+    formatted_entries: list[str] = []
+
+    # Перебираем файлы и их сообщения, нумеруя с 1
+    for idx, (filename, messages) in enumerate(data.items(), 1):
+        # Вычисляем ширину номера (длина номера + точка + пробел) для выравнивания сообщений
+        number_width = len(str(idx)) + 2  # +2 для ". "
+        # Отступ для сообщений: базовый отступ + ширина номера
+        message_indent_spaces = " " * (indent + number_width)
+
+        # Формируем сообщения, обрабатывая многострочные строки
+        formatted_messages: list[str] = []
+
+        for msg in messages:
+            # Приводим сообщение к строке и разбиваем на строки для обработки многострочных сообщений
+            lines = str(msg).split("\n")
+            # Первая строка сообщения начинается с маркера (bullet)
+            formatted_messages.append(f"{message_indent_spaces}{bullet} {lines[0]}")
+            # Последующие строки выравниваются с учётом длины маркера, пустые строки игнорируются
+            formatted_messages.extend(
+                f"{message_indent_spaces}{bullet_indent_spaces} {line}"
+                for line in lines[1:]
+                if line.strip()  # Игнорируем пустые строки
+            )
+
+        # Формируем полную запись для файла: номер, имя файла и сообщения
+        file_entry = (
+                f"{base_indent_spaces}{idx}. {filename}:\n"
+                + "\n".join(formatted_messages)
+        )
+        formatted_entries.append(file_entry)
+
+    # Объединяем записи с указанным разделителем
+    return entry_separator.join(formatted_entries)
+
+
+def format_email_message(
+        metadata: dict[str, any],
+        error_folder: Path,
+) -> str:
+    """Форматирует email-сообщение с отчётом об обработке файлов.
+
+    Создаёт понятный текст письма для пользователей, включая приветствие, результаты обработки файлов
+    (успешные, с ошибками или частично успешные) и инструкции по доступу к файлам. Использует функцию
+    formatted_text_from_data для форматирования списков сообщений.
+
+    Args:
+        metadata: Словарь с метаданными, содержащий ключи 'sender' (строка, email отправителя),
+            'date' (строка, дата получения), 'errors' (словарь ошибок), 'partial_successes'
+            (словарь частичных успехов), 'successes' (словарь успешных обработок)
+        error_folder: Путь к папке, где хранятся файлы с ошибками (объект Path)
+
+    Returns:
+        str: Отформатированный текст письма. Если нет сообщений об обработке, возвращается пустая строка.
+    """
+    # Инициализируем список секций письма с приветствием и информацией об отправителе
+    email_sections: list[str] = [
+        f"Здравствуйте!\n"
+        f"Это автоматическое уведомление об обработке файлов, полученных от {metadata['sender']}.\n"
+        f"Дата получения: {convert_email_date_to_moscow(metadata['date'])}"
+    ]
+
+    # Проверяем, есть ли сообщения для включения в письмо
+    has_content = False
+
+    # Добавляем информацию об ошибках, если они есть
+    if metadata.get("errors"):
+        formatted_errors = formatted_text_from_data(metadata["errors"])
+        email_sections.append(
+            f"❌ Файлы, при обработке которых возникли проблемы:\n"
+            f"{formatted_errors}\n\n"
+            f"Копии файлов доступны по пути: {error_folder}"
+        )
+        has_content = True
+
+    # Добавляем информацию о частично успешных файлах, если они есть
+    if metadata.get("partial_successes"):
+        formatted_partial = formatted_text_from_data(metadata["partial_successes"])
+        email_sections.append(
+            f"⚠️ Частично обработанные файлы (только часть данных загружена в ЦУП):\n"
+            f"{formatted_partial}\n\n"
+            f"Копии файлов доступны по пути: {error_folder}"
+        )
+        has_content = True
+
+    # Добавляем информацию об успешных файлах, если включены уведомления и есть успехи
+    if CONFIG.enable_success_notifications and metadata.get("successes"):
+        formatted_successes = formatted_text_from_data(metadata["successes"])
+        email_sections.append(
+            f"✅ Успешно обработанные файлы (данные загружены в ЦУП):\n"
+            f"{formatted_successes}"
+        )
+        has_content = True
+
+    # Объединяем секции, если есть хотя бы одно сообщение, иначе возвращаем пустую строку
+    return "\n\n\n".join(email_sections) if has_content else ""
+
+
 def process_output_ocr(
         email_user: str,
         email_pass: str,
@@ -25,9 +153,9 @@ def process_output_ocr(
     """
     Обрабатывает результаты OCR, извлекая номера сделок из ЦУП по коносаменту и отправляя номера пломб ЦУП.
 
-    Функция сканирует директории с результатами OCR, проверяет наличие метаданных, обрабатывает файлы,
+    Функция сканирует директории с результатами OCR, проверяет метаданные, обрабатывает файлы,
     взаимодействует с ЦУП для получения номеров транзакций, перемещает файлы в папки успешной обработки
-    или ошибок, отправляет уведомления по email при наличии ошибок и очищает пустые директории.
+    или ошибок, отправляет email-уведомления и очищает директории.
 
     Args:
         email_user: Адрес электронной почты для отправки уведомлений
@@ -36,15 +164,15 @@ def process_output_ocr(
         smtp_port: Порт SMTP-сервера
 
     Returns:
-        None: Функция не возвращает значений, но изменяет файловую систему и отправляет email.
+        None: Функция изменяет файловую систему, отправляет email, но не возвращает значений.
     """
-    # Получаем список директорий с файлом metadata.json для обработки
+    # Получаем список директорий, содержащих файл metadata.json
     folders_for_processing: list[Path] = [
         folder for folder in CONFIG.OUT_OCR_FOLDER.iterdir()
         if folder.is_dir() and (folder / "metadata.json").is_file()
     ]
 
-    # Логируем информацию о найденных директориях
+    # Если директорий нет, логируем и завершаем выполнение
     if not folders_for_processing:
         logger.info("➖ Новых директорий для обработки нет")
         return
@@ -54,18 +182,15 @@ def process_output_ocr(
     # Последовательно обрабатываем каждую директорию
     for folder in folders_for_processing:
         try:
-            # Читаем метаданные из JSON-файла, содержащего информацию о файлах и ошибках
-            metadata_file = folder / "metadata.json"
-            metadata: dict = read_json(metadata_file)
-            success_flag: bool = False  # Флаг успешной обработки хотя бы одного файла
+            # Читаем метаданные из файла metadata.json
+            metadata_file: Path = folder / "metadata.json"
+            metadata: dict[str, any] = read_json(metadata_file)
 
-            # Формирование путей для папок ошибок и успешной обработки.
-            # Используем sanitize_pathname для создания безопасных имен директорий
+            # Формируем пути для папок ошибок и успешной обработки с безопасными именами
             error_folder = sanitize_pathname(CONFIG.ERROR_FOLDER / folder.name, is_file=False)
             success_folder = sanitize_pathname(CONFIG.SUCCESS_FOLDER / folder.name, is_file=False)
 
-            # Проверяем целостность метаданных: файл не должен быть пустым,
-            # а так же должны присутствовать все ключевые поля
+            # Проверяем целостность метаданных: наличие и типы всех обязательных полей
             required_fields = {
                 "subject": str,
                 "sender": str,
@@ -73,97 +198,110 @@ def process_output_ocr(
                 "text_content": str,
                 "files": list,
                 "errors": dict,
+                "partial_successes": dict,
                 "successes": dict
             }
             if not metadata or not all(
                     isinstance(metadata.get(field), expected_type)
                     for field, expected_type in required_fields.items()
             ):
-                warning_message = f"❌ Файл имеет неверный формат или тип данных: {metadata_file}"
-                logger.warning(warning_message)
-                # Добавляем сообщение об ошибке в метаданные.
-                # Применяем setdefault, так как файл может быть пустым.
-                metadata.setdefault("errors", {})["!!! metadata.json"] = [warning_message]
+                error_message = (f"Файл metadata.json имеет неверный формат "
+                                 f"или тип данных: {metadata_file}")
+                logger.warning(f"❌ {error_message}")
+                metadata["GLOBAL_ERROR"] = error_message
                 write_json(metadata_file, metadata)
                 # Перемещаем директорию в папку ошибок
                 shutil.move(folder, error_folder)
                 continue
 
+            # Преобразуем словари в defaultdict для удобной работы с сообщениями
             metadata["errors"] = defaultdict(list, metadata["errors"])
+            metadata["partial_successes"] = defaultdict(list, metadata["partial_successes"])
             metadata["successes"] = defaultdict(list, metadata["successes"])
 
-            # Обрабатываем файлы (исходный и JSON), указанные в метаданных
+            # Проверяем, есть ли файлы для обработки
+            if not metadata["files"]:
+                error_message = f"В metadata.json нет файлов для обработки: {metadata_file}"
+                logger.warning(f"❌ {error_message}")
+                metadata["GLOBAL_ERROR"] = error_message
+                write_json(metadata_file, metadata)
+                shutil.move(folder, error_folder)
+                continue
+
+            # Обрабатываем каждый файл из метаданных
             for source_file_name in metadata["files"]:
                 source_file: Path = folder / source_file_name
                 json_file: Path = source_file.with_name(source_file.name + ".json")
+                files_to_transfer = [source_file, json_file]
 
                 # Проверяем существование исходного файла
                 if not source_file.is_file():
-                    logger.warning(f"❌ Отсутствует исходный файл {source_file} из metadata.json.")
-                    metadata["errors"].append(f"{source_file_name}: Ошибка распознавания.")
-                    transfer_files([source_file, json_file], error_folder, "move")
+                    error_message = "Исходный файл отсутствует."
+                    logger.warning(f"❌ {error_message} ({source_file})")
+                    metadata["errors"][source_file_name].append(error_message)
+                    transfer_files(files_to_transfer, error_folder, "move")
                     continue
 
                 # Проверяем существование JSON файла
                 if not json_file.is_file():
-                    warning_message = "JSON-файл с данными OCR отсутствует."
-                    logger.warning(f"⚠️ {warning_message} ({json_file})")
-                    metadata["errors"].append(f"{source_file_name}: {warning_message}")
-                    transfer_files([source_file, json_file], error_folder, "move")
+                    error_message = "JSON-файл с данными OCR отсутствует."
+                    logger.warning(f"⚠️ {error_message} ({json_file})")
+                    metadata["errors"][source_file_name].append(error_message)
+                    transfer_files(files_to_transfer, error_folder, "move")
                     continue
 
                 # Читаем и валидируем данные из JSON
-                json_data: dict = read_json(json_file)
+                json_data: dict[str, any] = read_json(json_file)
 
+                # Проверяем наличие номера коносамента
                 if not json_data.get("bill_of_lading"):
-                    warning_message = "Номер коносамента отсутствует или нераспознан."
-                    logger.warning(f"⚠️ {warning_message} ({json_file})")
-                    metadata["errors"].append(f"{source_file_name}: {warning_message}")
-                    transfer_files([source_file, json_file], error_folder, "move")
+                    error_message = "Номер коносамента отсутствует или не распознан."
+                    logger.warning(f"⚠️ {error_message} ({json_file})")
+                    metadata["errors"][source_file_name].append(error_message)
+                    transfer_files(files_to_transfer, error_folder, "move")
                     continue
 
-                if not json_data.get("containers"):
-                    warning_message = "Информация отсутствует или нераспознана для всех контейнеров."
-                    logger.warning(f"⚠️ {warning_message} ({json_file})")
-                    metadata["errors"].append(f"{source_file_name}: {warning_message}")
-                    transfer_files([source_file, json_file], error_folder, "move")
-                    continue
-
-                # Фильтруем список containers, удаляя словари с пустыми полями container (номер контейнера)
+                # Фильтруем контейнеры, оставляя только те, у которых есть номер
                 json_data["containers"] = [
-                    cont for cont in json_data["containers"]
+                    cont for cont in json_data.get("containers", [])
                     if isinstance(cont, dict) and cont.get("container")
-                ]
+                ] if json_data.get("containers") else None
 
-                # Составляем список контейнеров, с пустым полем "seals"
-                containers_with_empty_seals = [
+                # Проверяем наличие контейнеров
+                if not json_data["containers"]:
+                    error_message = "Информация о контейнерах отсутствует или не распознана."
+                    logger.warning(f"⚠️ {error_message} ({json_file})")
+                    metadata["errors"][source_file_name].append(error_message)
+                    transfer_files(files_to_transfer, error_folder, "move")
+                    continue
+
+                # Определяем контейнеры с пустыми номерами пломб
+                containers_with_empty_seals = {
                     cont["container"] for cont in json_data["containers"]
                     if not cont.get("seals")
-                ]
+                }
 
+                # Если все контейнеры имеют пустые пломбы
                 if len(containers_with_empty_seals) == len(json_data["containers"]):
-                    warning_message = "Номера пломб отсутствуют или пусты для всех контейнеров."
-                    logger.warning(f"⚠️ {warning_message} ({json_file})")
-                    metadata["errors"].append(f"{source_file_name}: {warning_message}")
-                    transfer_files([source_file, json_file], error_folder, "move")
+                    error_message = (f"Номера пломб отсутствуют для всех контейнеров: "
+                                     f"{', '.join(containers_with_empty_seals)}.")
+                    logger.warning(f"⚠️ {error_message} ({json_file})")
+                    metadata["errors"][source_file_name].append(error_message)
+                    transfer_files(files_to_transfer, error_folder, "move")
                     continue
 
-                if len(containers_with_empty_seals) > 0:
-                    warning_message = (f"Номера пломб отсутствуют или пусты для контейнеров: "
-                                       f"{', '.join(containers_with_empty_seals)}.")
-                    logger.warning(f"⚠️ {warning_message} ({json_file})")
-                    metadata["errors"].append(f"{source_file_name}: {warning_message}")
-
-
-                # if not all(
-                #         isinstance(cont, dict) and cont.get("container") and cont.get("seals")
-                #         for cont in json_data["containers"]
-                # ):
-                #     warning_message = "Не удалось получить номер пломбы для одного или нескольких контейнеров."
-                #     logger.info(f"⚠️ {warning_message}: {json_file}")
-                #     metadata["errors"].append(f"{source_file_name}: Ошибка распознавания. {warning_message}")
-                #     transfer_files([source_file, json_file], error_folder, "move")
-                #     continue
+                # Если есть контейнеры с пустыми пломбами, логируем частичную ошибку
+                if containers_with_empty_seals:
+                    error_message = (f"Номера пломб отсутствуют для части контейнеров: "
+                                     f"{', '.join(containers_with_empty_seals)}.")
+                    logger.warning(f"⚠️ {error_message} ({json_file})")
+                    metadata["errors"][source_file_name].append(error_message)
+                    transfer_files(files_to_transfer, error_folder, "copy2")
+                    # Удаляем контейнеры с пустым полем "seals"
+                    json_data["containers"] = [
+                        cont for cont in json_data["containers"]
+                        if cont["container"] not in containers_with_empty_seals
+                    ]
 
                 # Запрашиваем номер транзакции из ЦУП по коносаменту
                 # Пример получаемого значения: ["АА-0095444 от 14.04.2025"]
@@ -171,8 +309,7 @@ def process_output_ocr(
                     "TransactionNumberFromBillOfLading", json_data["bill_of_lading"]
                 )
 
-                # Если номер коносамента заканчивается на суффикс `SRV` и сделок по нему не найдено,
-                # то удаляем суффикс `SRV`.
+                # Если транзакции не найдены и коносамент заканчивается на `SRV`, пробуем без суффикса
                 if not transaction_numbers and json_data["bill_of_lading"].endswith("SRV"):
                     bill_of_lading = json_data["bill_of_lading"].removesuffix("SRV")
                     transaction_numbers: list[str] = cup_http_request(
@@ -180,15 +317,16 @@ def process_output_ocr(
                     )
                     json_data["bill_of_lading"] = bill_of_lading
 
+                # Проверяем, получены ли номера транзакций
                 if not (transaction_numbers and isinstance(transaction_numbers, list)):
-                    warning_message = (
+                    error_message = (
                         f"Номер транзакции из ЦУП отсутствует. "
                         f"Возможно, номер коносамента ({json_data['bill_of_lading']}) "
                         f"распознан неверно."
                     )
-                    logger.warning(f"⚠️ {warning_message} ({json_file})")
-                    metadata["errors"].append(f"{source_file_name}: {warning_message}")
-                    transfer_files([source_file, json_file], error_folder, "move")
+                    logger.warning(f"⚠️ {error_message} ({json_file})")
+                    metadata["errors"][source_file_name].append(error_message)
+                    transfer_files(files_to_transfer, error_folder, "move")
                     continue
 
                 # Обновляем JSON-данные дополнительной информацией
@@ -200,7 +338,7 @@ def process_output_ocr(
                 # Сохраняем обновленный JSON-файл
                 write_json(json_file, json_data)
 
-                # Запрашиваем номера контейнеров по номеру транзакции
+                # Запрашиваем номера контейнеров по каждому номеру транзакции
                 container_numbers_cup: list[list[str]] = [
                     # Очищаем полученные номера от лишних пробелов
                     [number.strip() for number in cup_http_request(
@@ -212,120 +350,95 @@ def process_output_ocr(
                     for transaction_number in transaction_numbers
                 ]
 
-                # Проверяем успешность получения номеров контейнеров из ЦУП
-                if not all(container_numbers_cup):
-                    warning_message = (
+                # Проверяем, получены ли номера контейнеров
+                if not any(container_numbers_cup):
+                    error_message = (
                         f"Номера контейнеров по номеру сделки ({transaction_numbers}) "
                         f"из ЦУП отсутствуют."
                     )
-                    logger.warning(f"⚠️ {warning_message} ({source_file})")
-                    metadata["errors"].append(f"{source_file_name}: {warning_message}")
-                    transfer_files([source_file, json_file], error_folder, "move")
+                    logger.warning(f"⚠️ {error_message} ({source_file})")
+                    metadata["errors"][source_file_name].append(error_message)
+                    transfer_files(files_to_transfer, error_folder, "move")
                     continue
 
                 # Сравниваем номера контейнеров из OCR и ЦУП
                 container_numbers_cup_set: set[str] = {x for sublist in container_numbers_cup for x in sublist}
                 container_numbers_ocr_set: set[str] = {cont.get("container") for cont in json_data.get("containers")}
 
-                # Проверяем, есть ли пересечение между наборами номеров контейнеров
+                # Проверяем, есть ли совпадения между наборами номеров
                 if not container_numbers_cup_set & container_numbers_ocr_set:
-                    warning_message = (
+                    error_message = (
                         f"Номера контейнеров из OCR ({', '.join(container_numbers_ocr_set)}) "
                         f"не совпадают с номерами из ЦУП ({', '.join(container_numbers_cup_set)}) "
                         f"по номеру сделки {transaction_numbers}."
                     )
-                    logger.warning(f"⚠️ {warning_message} ({source_file})")
-                    metadata["errors"].append(f"{source_file_name}: {warning_message}")
-                    transfer_files([source_file, json_file], error_folder, "move")
+                    logger.warning(f"⚠️ {error_message} ({source_file})")
+                    metadata["errors"][source_file_name].append(error_message)
+                    transfer_files(files_to_transfer, error_folder, "move")
                     continue
 
                 # Проверяем наличие контейнеров, которые были распознаны, но отсутствуют в ЦУП
-                container_numbers_difference = container_numbers_ocr_set - container_numbers_cup_set
-                if container_numbers_difference:
+                missing_containers: set[str] = container_numbers_ocr_set - container_numbers_cup_set
+                if missing_containers:
                     # Отправляем сообщение, но не прерываем цикл, так как
                     # некоторые контейнеры были успешно распознаны
-                    warning_message = (
-                        f"Некоторые из распознанных номеров контейнеров ({', '.join(container_numbers_difference)}) "
+                    error_message = (
+                        f"Некоторые из распознанных номеров контейнеров ({', '.join(missing_containers)}) "
                         f"отсутствуют в данных ЦУП по номеру сделки {transaction_numbers}."
                     )
 
-                    logger.warning(f"⚠️ {warning_message} ({source_file})")
-                    metadata["errors"].append(f"{source_file_name}: {warning_message}")
-                    transfer_files([source_file, json_file], error_folder, "move")
+                    logger.warning(f"⚠️ {error_message} ({source_file})")
+                    metadata["errors"][source_file_name].append(error_message)
+                    transfer_files(files_to_transfer, error_folder, "copy2")
+                    json_data["containers"] = [
+                        cont for cont in json_data["containers"]
+                        if cont["container"] not in missing_containers
+                    ]
 
-                # Отправляем номера пломб в ЦУП, если это включено в настройках
+                # Отправляем данные в ЦУП, если включена настройка
                 if CONFIG.enable_send_production_data:
                     if not send_production_data(json_data):
-                        warning_message = "Номера пломб не удалось загрузить в ЦУП."
-                        logger.warning(f"❌ {warning_message} ({json_file})")
-                        metadata["errors"].append(f"{source_file_name}: {warning_message}")
-                        transfer_files([source_file, json_file], error_folder, "move")
+                        error_message = "Не удалось загрузить данные в ЦУП."
+                        logger.warning(f"❌ {error_message} ({json_file})")
+                        metadata["errors"][source_file_name].append(error_message)
+                        transfer_files(files_to_transfer, error_folder, "move")
                         continue
 
-                # Логируем успешную обработку и перемещаем файлы в директорию успешной обработки
+                # Формируем сообщение об успехе и перемещаем файлы в директорию успешной обработки
                 success_message = "\n".join([
-                    f"{source_file_name} загружены данные:",
+                    f"Загруженные данные:",
                     f"bill_of_lading: {json_data['bill_of_lading']}",
                     f"transaction_numbers: {json_data['transaction_numbers']}",
                     f"containers:",
                     *[f"    - {cont['container']}: {cont['seals']}"
-                      for cont in json_data["containers"] if
-                      cont["container"] not in container_numbers_difference]
+                      for cont in json_data["containers"]]
                 ])
                 logger.info(f"✔️ Файл обработан успешно: {source_file}")
-                metadata["successes"].append(success_message)
-                transfer_files([source_file, json_file], success_folder, "move")
-                success_flag = True
+                metadata["successes"][source_file_name].append(success_message)
+                transfer_files(files_to_transfer, success_folder, "move")
 
-            # Сохранение обновленных метаданных после обработки всех файлов в директории
-            write_json(folder / "metadata.json", metadata)
-
-            # Начало формирования сообщения
-            email_messages: list[str] = [
-                f"Здравствуйте!\n"
-                f"Это автоматическое уведомление по файлам, полученным от {metadata['sender']}.\n"
-                f"Дата получения: {convert_email_date_to_moscow(metadata['date'])}"
+            # Формируем список частично успешных файлов (которые есть одновременно
+            # в errors и successes) с сохранением порядка
+            partial_successes_files = [
+                filename for filename in metadata["errors"]
+                if filename in metadata["successes"]
             ]
-
-            # Обрабатываем ошибки: копируем/перемещаем метаданные и подготавливаем email уведомление
-            if metadata["errors"]:
-                # Определяем действие с метаданными: копирование или перемещение
-                transfer_files(
-                    folder / "metadata.json",
-                    error_folder,
-                    operation="copy2" if success_flag else "move"
+            # Обрабатываем частично распознанные файлы
+            for partial_filename in partial_successes_files:
+                # Объединяем сообщения из errors и successes, удаляя информацию из исходных списков
+                metadata["partial_successes"][partial_filename] = (
+                        metadata["errors"].pop(partial_filename, []) +
+                        metadata["successes"].pop(partial_filename, [])
                 )
 
-                # Формируем текст письма с перечислением ошибок
-                error_list = "\n".join(
-                    f"    {i}. {error}" for i, error in enumerate(metadata["errors"], 1)
-                )
-                email_messages.append(
-                    f"⚠️ Возникли ошибки при обработке следующих файлов:\n"
-                    f"{error_list}\n\n"
-                    f"Копии файлов доступны по пути: {error_folder}"
-                )
+            # Сохраняем обновленные метаданные после обработки всех файлов в директории
+            write_json(metadata_file, metadata)
 
-            # Email уведомление об успешно обработанных файлах.
-            # Формируем при включенной настройке в конфиге
-            if CONFIG.enable_success_notifications and metadata["successes"]:
-                # Формируем нумерованный список успешно обработанных файлов.
-                # Каждая строка начинается с "    {i}. ", где i — номер (например: "    1. ").
-                # Если в success есть переносы строк, добавляем нужный отступ к каждой новой строке
-                # для выравнивания по отступу, соответствующему началу первой строки с нумерацией.
-                success_list = "\n\n".join(
-                    f"    {i}. {success.replace(chr(10), chr(10) + ' ' * (len(str(i)) + 6))}"  # chr(10) = "\n"
-                    for i, success in enumerate(metadata["successes"], 1)  # i — номер с 1, success — текст об обработке
-                )
-                email_messages.append(
-                    f"✅ Успешно обработанные файлы (данные загружены в ЦУП):\n"
-                    f"{success_list}"
-                )
-
-            # Отправка письма только если есть дополнительная информация (ошибки или успехи)
-            if len(email_messages) > 1:
+            # Формируем и отправляем email, если есть сообщения
+            email_text = format_email_message(metadata, error_folder)
+            if email_text:
                 send_email(
-                    email_text="\n\n\n".join(email_messages),
+                    email_text=email_text,
                     # recipient_emails=metadata["sender"],
                     recipient_emails=CONFIG.notification_emails,
                     subject=f"Автоответ от {email_user}",
@@ -336,9 +449,21 @@ def process_output_ocr(
                     email_format="plain"
                 )
 
-            # Если есть успешные файлы, перемещаем метаданные в папку успеха
-            if success_flag:
-                transfer_files(folder / "metadata.json", success_folder, "move")
+            # Копируем metadata.json в error_folder, если есть ошибки или частичные успехи
+            if metadata["errors"] or metadata["partial_successes"]:
+                transfer_files(metadata_file, error_folder, "copy2")
+
+            # Перемещаем metadata.json в success_folder, если есть успехи
+            if metadata["successes"]:
+                transfer_files(metadata_file, success_folder, "move")
+
+            # Удаляем metadata.json из исходной директории (при наличии).
+            # Условие сработает, если не было успехов.
+            if metadata_file.exists():
+                try:
+                    metadata_file.unlink()
+                except OSError as e:
+                    logger.error(f"⚠️ Не удалось удалить {metadata_file}: {e}")
 
             # Очищаем директорию: удаляем, если пуста, или перемещаем остатки
             if is_directory_empty(folder):
@@ -347,9 +472,9 @@ def process_output_ocr(
             else:
                 residual_destination = error_folder / f"residual_files"
                 shutil.move(folder, residual_destination)
-                logger.warning(
-                    f"❗❗❗ Остались необработанные файлы в {folder.name}. "
-                    f"Перемещены в {residual_destination} для ручной проверки"
+                logger.error(
+                    f"❗❗❗ В директории {folder.name} остались необработанные файлы. "
+                    f"Они перемещены в {residual_destination} для ручной проверки"
                 )
 
         except Exception as e:

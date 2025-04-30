@@ -4,14 +4,14 @@ import base64
 import binascii
 import shutil
 from pathlib import Path
-from typing import Any, Iterable, Literal
+from typing import Iterable, Literal
 
 from src.logger import logger
 
 
 # --- READERS AND WRITERS ---
 
-def write_json(file_path: Path | str, data: Any) -> None:
+def write_json(file_path: Path | str, data: any) -> None:
     """Записывает данные в JSON файл с форматированием.
 
     Args:
