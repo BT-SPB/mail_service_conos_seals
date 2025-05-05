@@ -146,9 +146,9 @@ class FolderWatcher(FileSystemEventHandler):
 
                 if event_ready or timeout_ready:
                     if event_ready:
-                        logger.info("▶️ Обработка директории по событию")
+                        logger.debug("▶️ Обработка директории по событию")
                     elif timeout_ready:
-                        logger.info("🕒 Принудительная обработка директории по таймеру")
+                        logger.debug("🕒 Принудительная обработка директории по таймеру")
 
                     self.is_processing = True
                     try:

@@ -174,7 +174,7 @@ class Config(BaseSettings):
         self.LOG_FOLDER = workflow_dir / "logs"
 
         # Инициализация логгера после инициализации директории для логов
-        init_logger(log_file=self.LOG_FOLDER / "rates_mail.log")
+        init_logger(log_dir=self.LOG_FOLDER, log_name="rates_mail")
 
         # Выполнение загрузки зашифрованных настроек и создание директорий
         self.load_encrypted_settings()

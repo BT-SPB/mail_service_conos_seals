@@ -233,7 +233,7 @@ def send_email(
 
     # Проверка настройки блокировки отправки
     if CONFIG.block_email_sending:
-        logger.info(f"📧 Отправка email заблокирована настройкой block_email_sending")
+        logger.debug(f"📧 Отправка email заблокирована настройкой block_email_sending")
         logger.info(format_email_log)
         return
 

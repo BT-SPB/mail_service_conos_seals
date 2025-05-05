@@ -239,7 +239,7 @@ def process_output_ocr(
 
     # Если директорий нет, логируем и завершаем выполнение
     if not folders_for_processing:
-        logger.info("➖ Новых директорий для обработки нет")
+        logger.debug("➖ Новых директорий для обработки нет")
         return
 
     logger.info(f"📁 Обнаружено директорий для обработки: {len(folders_for_processing)}")
@@ -475,7 +475,7 @@ def process_output_ocr(
                         transfer_files(files_to_transfer, error_folder, "move")
                         continue
                 else:
-                    logger.info(
+                    logger.debug(
                         "🔔 Отправка данных в ЦУП отключена настройкой "
                         "enable_send_production_data"
                     )

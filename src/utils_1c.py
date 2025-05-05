@@ -108,7 +108,7 @@ def cup_http_request(
             if response.status_code == 200:
                 # Парсим JSON-ответ и возвращаем его
                 result = response.json()
-                logger.info(f"✔️ Успешный ответ от сервера: {result}")
+                logger.debug(f"✔️ Успешный ответ от сервера: {result}")
                 return result
             else:
                 logger.warning(
@@ -214,7 +214,7 @@ def send_production_data(
                 )
 
                 if response.status_code == 200:
-                    logger.info(
+                    logger.debug(
                         f"✔️ Данные успешно отправлены в сделку: {transaction_number}. "
                         f"Ответ: {response.text or 'пустой'}"
                     )

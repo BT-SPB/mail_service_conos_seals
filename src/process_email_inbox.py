@@ -137,7 +137,7 @@ class EmailMonitor:
             # Поиск непрочитанных писем
             message_ids = self.server.search(["UNSEEN"])
             if not message_ids:
-                logger.info("➖ Новых писем нет")
+                logger.debug("➖ Новых писем нет")
                 return
 
             logger.info(f"📧 Обнаружено непрочитанных писем: {len(message_ids)}")
