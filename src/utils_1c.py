@@ -71,37 +71,34 @@ def cup_http_request(
         function: Название вызываемой функции/метода API на сервере 1С
         *args: Позиционные аргументы, передаваемые в URL
         kappa: Флаг, определяющий приоритет серверов (основной/резервный)
-        encode: Кодирования аргументов base64
+        encode: Если True, аргументы кодируются в base64
         user_1c: Логин пользователя для базовой авторизации
         password_1c: Пароль пользователя для базовой авторизации
 
     Returns:
         list | dict | None: Ответ сервера в формате JSON, если успешен. Иначе — None.
     """
-
-    # Определение порядка серверов: основной и резервный
-    primary_base = KAPPA_URL if kappa else LOCAL_URL
-    secondary_base = LOCAL_URL if kappa else KAPPA_URL
-
-    # Выбор функции кодирования: base64 или passthrough
+    # Определяем функцию кодирования аргументов: base64 или без изменений
     encode_func: Callable[[str], str] = (
         (lambda x: base64.urlsafe_b64encode(x.encode()).decode()) if encode else
         (lambda x: x)
     )
 
-    # Кодируем аргументы и формируем путь
-    function_args = "/".join(map(encode_func, args))
+    # Формируем строку аргументов, кодируя их при необходимости и соединяя через слеш
+    function_args: str = "/".join(encode_func(arg) for arg in args)
 
     # Список URL-адресов в порядке приоритета
     urls = [
-        f"{primary_base}{function}/{function_args}",
-        f"{secondary_base}{function}/{function_args}"
+        f"{KAPPA_URL if kappa else LOCAL_URL}{function}/{function_args}",
+        f"{LOCAL_URL if kappa else KAPPA_URL}{function}/{function_args}"
     ]
 
     # Пытаемся последовательно выполнить запросы
     for url in urls:
         try:
-            logger.debug(f"🌐 Отправка GET-запроса: {url}")
+            logger.debug(f"🌐 Отправка GET-запроса на {url}")
+
+            # Выполняем GET-запрос с таймаутом 10 секунд
             response = requests.get(
                 url,
                 auth=HTTPBasicAuth(user_1c, password_1c),
@@ -109,12 +106,19 @@ def cup_http_request(
             )
 
             if response.status_code == 200:
-                logger.info(f"✔️ Успешный ответ от сервера: {response.json()}")
-                return response.json()
+                # Парсим JSON-ответ и возвращаем его
+                result = response.json()
+                logger.info(f"✔️ Успешный ответ от сервера: {result}")
+                return result
             else:
-                logger.warning(f"⚠️ Ошибка {response.status_code} при запросе: {url} - {response.reason}")
+                logger.warning(
+                    f"⚠️ Ошибка при запросе к {url}. "
+                    f"Код: {response.status_code}, Причина: {response.reason}"
+                )
         except Exception as e:
-            logger.exception(f"⛔ Исключение при запросе к {url}: {e}")
+            # Логируем сетевое исключение и продолжаем с резервным сервером
+            logger.exception(f"⛔ Сетевая ошибка при запросе к {url}: {e}")
+            continue
 
 
 def send_production_data(
@@ -171,35 +175,36 @@ def send_production_data(
     Returns:
         True - при успешной отправке всех данных на сервер. False - при неудаче хотя бы одной отправки.
     """
+    # Создаем глубокую копию входных данных, чтобы избежать изменения оригинала
     data = copy.deepcopy(data_source)
 
-    # Название функции
-    function = "SendProductionDataToTransaction"
+    # Константа для имени функции на сервере
+    function_name: str = "SendProductionDataToTransaction"
+
     # Определяем порядок серверов в зависимости от флага kappa
     urls = [
-        (KAPPA_URL if kappa else LOCAL_URL) + function,
-        (LOCAL_URL if kappa else KAPPA_URL) + function
+        f"{KAPPA_URL if kappa else LOCAL_URL}{function_name}",
+        f"{LOCAL_URL if kappa else KAPPA_URL}{function_name}"
     ]
 
     # Заголовки для передачи JSON с указанием кодировки
     headers = {"Content-Type": "application/json; charset=utf-8"}
 
-    # Успешность отправки всех транзакций
-    all_success = True
+    # Извлекаем список номеров транзакций, удаляя их из словаря данных
+    transaction_numbers: list[str] = data.pop("transaction_numbers", [])
 
-    # Извлекаем список номеров сделок
-    transaction_numbers: list[str] = data.pop("transaction_numbers")
+    # Флаг успешной отправки хотя бы одной транзакции
+    success_flag = False
 
     # Для каждого номера сделки отправляем отдельный запрос
     for transaction_number in transaction_numbers:
-        # Записываем в данные текущий номер сделки
+        # Добавляем текущий номер транзакции в данные для отправки
         data["transaction_number"] = transaction_number
 
-        # Проходим по писку URL-адресов в порядке приоритета
-        success = False
         for url in urls:
             try:
-                logger.debug(f"🌐 Попытка отправки данных на {url}")
+                logger.debug(f"🌐 Попытка отправки данных на {url} для транзакции {transaction_number}")
+                # Выполняем POST-запрос с таймаутом 10 секунд
                 response = requests.post(
                     url,
                     auth=HTTPBasicAuth(user_1c, password_1c),
@@ -209,20 +214,25 @@ def send_production_data(
                 )
 
                 if response.status_code == 200:
-                    logger.info(f"✔️ Данные успешно отправлены. Ответ: {response.text}")
-                    success = True
-                    break
+                    logger.info(
+                        f"✔️ Данные успешно отправлены в сделку: {transaction_number}. "
+                        f"Ответ: {response.text or 'пустой'}"
+                    )
+                    success_flag = True
+                    break  # Прерываем цикл по серверам при успехе
                 else:
-                    logger.warning(f"⚠️ Ошибка {response.status_code}: {response.text}")
+                    # Логируем неуспешный ответ сервера
+                    logger.warning(
+                        f"⚠️ Ошибка при отправке данных для транзакции {transaction_number}. "
+                        f"Код: {response.status_code}, Ответ: {response.text}"
+                    )
 
             except requests.exceptions.RequestException as e:
-                logger.exception(f"⛔ Исключение при отправке на {url}: {e}")
+                # Логируем исключение при сетевой ошибке
+                logger.exception(f"⛔ Сетевая ошибка при отправке на {url}: {e}")
+                continue  # Пробуем резервный сервер
 
-        if not success:
-            all_success = False
-            logger.error(f"❌ Не удалось отправить данные для transaction_number: {transaction_number}")
-
-    return all_success
+    return success_flag
 
 # if __name__ == "__main__":
 #     # from src.utils import read_json
@@ -233,7 +243,7 @@ def send_production_data(
 #     # print(data_json)
 #
 #     func = r'TransactionNumberFromBillOfLading'
-#     arg = r'AKKNVA25001803'
+#     arg = r'ILHFA014015'
 #     tn = cup_http_request(func, arg)
 #
 #     func = "GetTransportPositionNumberByTransactionNumber"

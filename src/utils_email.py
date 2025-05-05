@@ -32,9 +32,9 @@ def convert_email_date_to_moscow(
         moscow_dt = dt.astimezone(ZoneInfo("Europe/Moscow"))
         return moscow_dt.strftime(fmt)
     except Exception as e:
-        print(e)
-        print(date_mail)
-        return "Unknown date"
+        error_message = "Unknown date"
+        logger.exception(f"{error_message}: {e}")
+        return error_message
 
 
 def detect_encoding(body: bytes) -> str:

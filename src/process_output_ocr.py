@@ -16,6 +16,71 @@ from src.utils_1c import cup_http_request, send_production_data
 from src.utils_email import send_email, convert_email_date_to_moscow
 
 
+def format_json_data(
+        json_data: dict[str, any],
+        title: str | None = None
+) -> str:
+    """Форматирует данные из словаря JSON в строку с информацией о коносаменте, транзакциях и контейнерах.
+
+    Проверяет наличие ключей 'bill_of_lading', 'transaction_numbers' и 'containers' в словаре.
+    Для 'containers' проверяет, что это список словарей, содержащих ключи 'container' и 'seals'.
+    Если задан заголовок (title), добавляет его в начало строки. Формирует строку в формате:
+        <title>
+        bill_of_lading: <значение>
+        transaction_numbers: <значение>
+        containers:
+            • <container>: <seals>
+    Добавляет только строки для существующих и валидных полей. Если в результате только заголовок,
+    возвращается пустая строка.
+
+    Args:
+        json_data: Словарь с данными, содержащий ключи 'bill_of_lading' (строка),
+            'transaction_numbers' (список строк), 'containers' (список словарей
+            с ключами 'container' и 'seals')
+        title: Заголовок для добавления в начало строки (опционально, по умолчанию None)
+
+    Returns:
+        str: Отформатированная строка с данными. Если нет валидных полей или только заголовок,
+            возвращается пустая строка.
+    """
+    # Инициализируем список строк для формирования результата
+    result_lines: list[str] = []
+
+    # Добавляем заголовок, если он задан и не пустой
+    if title and title.strip():
+        result_lines.append(title)
+
+    # Считаем, сколько строк было до добавления данных (для проверки только заголовка)
+    initial_length = len(result_lines)
+
+    # Добавляем bill_of_lading, если ключ существует и значение не пустое
+    if bill_of_lading := json_data.get("bill_of_lading"):
+        result_lines.append(f"bill_of_lading: {bill_of_lading}")
+
+    # Добавляем transaction_numbers, если ключ существует и значение не пустое
+    if transaction_numbers := json_data.get("transaction_numbers"):
+        result_lines.append(f"transaction_numbers: {transaction_numbers}")
+
+    # Обрабатываем containers: проверяем, что это список, и форматируем каждый контейнер
+    if containers := json_data.get("containers"):
+        if isinstance(containers, list):
+            # Фильтруем контейнеры, у которых есть оба ключа: container и seals
+            valid_containers = [
+                cont for cont in containers
+                if isinstance(cont, dict) and cont.get("container") and "seals" in cont
+            ]
+            # Добавляем секцию containers, если есть валидные контейнеры
+            if valid_containers:
+                result_lines.append("containers:")
+                result_lines.extend(
+                    f"{' ' * 4}- {cont['container']}: {cont['seals']}"
+                    for cont in valid_containers
+                )
+
+    # Возвращаем пустую строку, если добавлен только заголовок или ничего
+    return "\n".join(result_lines) if len(result_lines) > initial_length else ""
+
+
 def formatted_text_from_data(
         data: dict[str, list[str]],
         bullet: str = "•",
@@ -105,7 +170,7 @@ def format_email_message(
     email_sections: list[str] = [
         f"Здравствуйте!\n"
         f"Это автоматическое уведомление об обработке файлов, полученных от {metadata['sender']}.\n"
-        f"Дата получения: {convert_email_date_to_moscow(metadata['date'])}"
+        f"Дата получения: {convert_email_date_to_moscow(metadata['date'])}."
     ]
 
     # Проверяем, есть ли сообщения для включения в письмо
@@ -324,8 +389,9 @@ def process_output_ocr(
                         f"Возможно, номер коносамента ({json_data['bill_of_lading']}) "
                         f"распознан неверно."
                     )
+                    formatted_json_data = format_json_data(json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):")
                     logger.warning(f"⚠️ {error_message} ({json_file})")
-                    metadata["errors"][source_file_name].append(error_message)
+                    metadata["errors"][source_file_name].append(f"{error_message}{formatted_json_data}")
                     transfer_files(files_to_transfer, error_folder, "move")
                     continue
 
@@ -356,8 +422,9 @@ def process_output_ocr(
                         f"Номера контейнеров по номеру сделки ({transaction_numbers}) "
                         f"из ЦУП отсутствуют."
                     )
+                    formatted_json_data = format_json_data(json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):")
                     logger.warning(f"⚠️ {error_message} ({source_file})")
-                    metadata["errors"][source_file_name].append(error_message)
+                    metadata["errors"][source_file_name].append(f"{error_message}{formatted_json_data}")
                     transfer_files(files_to_transfer, error_folder, "move")
                     continue
 
@@ -372,8 +439,9 @@ def process_output_ocr(
                         f"не совпадают с номерами из ЦУП ({', '.join(container_numbers_cup_set)}) "
                         f"по номеру сделки {transaction_numbers}."
                     )
+                    formatted_json_data = format_json_data(json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):")
                     logger.warning(f"⚠️ {error_message} ({source_file})")
-                    metadata["errors"][source_file_name].append(error_message)
+                    metadata["errors"][source_file_name].append(f"{error_message}{formatted_json_data}")
                     transfer_files(files_to_transfer, error_folder, "move")
                     continue
 
@@ -386,7 +454,6 @@ def process_output_ocr(
                         f"Некоторые из распознанных номеров контейнеров ({', '.join(missing_containers)}) "
                         f"отсутствуют в данных ЦУП по номеру сделки {transaction_numbers}."
                     )
-
                     logger.warning(f"⚠️ {error_message} ({source_file})")
                     metadata["errors"][source_file_name].append(error_message)
                     transfer_files(files_to_transfer, error_folder, "copy2")
@@ -398,21 +465,23 @@ def process_output_ocr(
                 # Отправляем данные в ЦУП, если включена настройка
                 if CONFIG.enable_send_production_data:
                     if not send_production_data(json_data):
-                        error_message = "Не удалось загрузить данные в ЦУП."
+                        error_message = (
+                            f"Не удалось загрузить данные в ЦУП "
+                            f"по номеру сделки {transaction_numbers}.\n"
+                        )
+                        formatted_json_data = format_json_data(json_data, "\nРаспознанные данные:")
                         logger.warning(f"❌ {error_message} ({json_file})")
-                        metadata["errors"][source_file_name].append(error_message)
+                        metadata["errors"][source_file_name].append(f"{error_message}{formatted_json_data}")
                         transfer_files(files_to_transfer, error_folder, "move")
                         continue
+                else:
+                    logger.info(
+                        "🔔 Отправка данных в ЦУП отключена настройкой "
+                        "enable_send_production_data"
+                    )
 
                 # Формируем сообщение об успехе и перемещаем файлы в директорию успешной обработки
-                success_message = "\n".join([
-                    f"Загруженные данные:",
-                    f"bill_of_lading: {json_data['bill_of_lading']}",
-                    f"transaction_numbers: {json_data['transaction_numbers']}",
-                    f"containers:",
-                    *[f"    - {cont['container']}: {cont['seals']}"
-                      for cont in json_data["containers"]]
-                ])
+                success_message = format_json_data(json_data, "Загруженные данные:")
                 logger.info(f"✔️ Файл обработан успешно: {source_file}")
                 metadata["successes"][source_file_name].append(success_message)
                 transfer_files(files_to_transfer, success_folder, "move")
