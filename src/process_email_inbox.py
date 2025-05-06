@@ -181,7 +181,8 @@ class EmailMonitor:
                     # Формирование уникального имени папки на основе даты и времени отправки письма
                     date_time = convert_email_date_to_moscow(metadata["date"], "%y%m%d_%H%M%S")
                     folder_path = sanitize_pathname(
-                        CONFIG.IN_FOLDER / f"{date_time}_{metadata['sender']}",
+                        CONFIG.IN_FOLDER,
+                        f"{date_time}_{metadata['sender']}",
                         is_file=False
                     )
 
@@ -202,7 +203,7 @@ class EmailMonitor:
                             continue
 
                         # Создание безопасного имени файла
-                        file_path = sanitize_pathname(folder_path / file_name, is_file=True)
+                        file_path = sanitize_pathname(folder_path, file_name, is_file=True)
 
                         try:
                             # Сохраняем файл

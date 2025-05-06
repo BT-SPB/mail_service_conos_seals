@@ -252,8 +252,8 @@ def process_output_ocr(
             metadata: dict[str, any] = read_json(metadata_file)
 
             # Формируем пути для папок ошибок и успешной обработки с безопасными именами
-            error_folder = sanitize_pathname(CONFIG.ERROR_FOLDER / folder.name, is_file=False)
-            success_folder = sanitize_pathname(CONFIG.SUCCESS_FOLDER / folder.name, is_file=False)
+            error_folder = sanitize_pathname(CONFIG.ERROR_FOLDER, folder.name, is_file=False)
+            success_folder = sanitize_pathname(CONFIG.SUCCESS_FOLDER, folder.name, is_file=False)
 
             # Проверяем целостность метаданных: наличие и типы всех обязательных полей
             required_fields = {
