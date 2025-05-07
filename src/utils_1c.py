@@ -102,7 +102,7 @@ def cup_http_request(
             response = requests.get(
                 url,
                 auth=HTTPBasicAuth(user_1c, password_1c),
-                timeout=10
+                timeout=30
             )
 
             if response.status_code == 200:
@@ -210,7 +210,7 @@ def send_production_data(
                     auth=HTTPBasicAuth(user_1c, password_1c),
                     headers=headers,
                     json=data,
-                    timeout=10
+                    timeout=30
                 )
 
                 if response.status_code == 200:
