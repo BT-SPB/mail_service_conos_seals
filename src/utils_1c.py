@@ -204,13 +204,13 @@ def send_production_data(
         for url in urls:
             try:
                 logger.debug(f"🌐 Попытка отправки данных на {url} для транзакции {transaction_number}")
-                # Выполняем POST-запрос с таймаутом 10 секунд
+                # Выполняем POST-запрос с максимальным таймаутом 60 секунд
                 response = requests.post(
                     url,
                     auth=HTTPBasicAuth(user_1c, password_1c),
                     headers=headers,
                     json=data,
-                    timeout=30
+                    timeout=60
                 )
 
                 if response.status_code == 200:
@@ -235,16 +235,16 @@ def send_production_data(
     return success_flag
 
 # if __name__ == "__main__":
-#     # from src.utils import read_json
-#     #
-#     # data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\КС_FBCL10930(pdf).json")
-#     # send_production_data(data_json)
-#     #
+#     from src.utils import read_json
+#
+#     data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\large.json")
+#     send_production_data(data_json, kappa=True)
+#
 #     # print(data_json)
 #
-#     func = r'TransactionNumberFromBillOfLading'
-#     arg = r'ILHFA014015'
-#     tn = cup_http_request(func, arg)
-#
-#     func = "GetTransportPositionNumberByTransactionNumber"
-#     cup_http_request(func, tn[-1].split()[0], encode=False)
+#     # func = r'TransactionNumberFromBillOfLading'
+#     # arg = r'ILHFA014015'
+#     # tn = cup_http_request(func, arg)
+#     #
+#     # func = "GetTransportPositionNumberByTransactionNumber"
+#     # cup_http_request(func, tn[-1].split()[0], encode=False)
