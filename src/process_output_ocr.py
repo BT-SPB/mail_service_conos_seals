@@ -389,7 +389,9 @@ def process_output_ocr(
                         f"Возможно, номер коносамента ({json_data['bill_of_lading']}) "
                         f"распознан неверно."
                     )
-                    formatted_json_data = format_json_data(json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):")
+                    formatted_json_data = format_json_data(
+                        json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):"
+                    )
                     logger.warning(f"⚠️ {error_message} ({json_file})")
                     metadata["errors"][source_file_name].append(f"{error_message}{formatted_json_data}")
                     transfer_files(files_to_transfer, error_folder, "move")
@@ -422,7 +424,9 @@ def process_output_ocr(
                         f"Номера контейнеров по номеру сделки ({transaction_numbers}) "
                         f"из ЦУП отсутствуют."
                     )
-                    formatted_json_data = format_json_data(json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):")
+                    formatted_json_data = format_json_data(
+                        json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):"
+                    )
                     logger.warning(f"⚠️ {error_message} ({source_file})")
                     metadata["errors"][source_file_name].append(f"{error_message}{formatted_json_data}")
                     transfer_files(files_to_transfer, error_folder, "move")
@@ -439,7 +443,9 @@ def process_output_ocr(
                         f"не совпадают с номерами из ЦУП ({', '.join(container_numbers_cup_set)}) "
                         f"по номеру сделки {transaction_numbers}."
                     )
-                    formatted_json_data = format_json_data(json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):")
+                    formatted_json_data = format_json_data(
+                        json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):"
+                    )
                     logger.warning(f"⚠️ {error_message} ({source_file})")
                     metadata["errors"][source_file_name].append(f"{error_message}{formatted_json_data}")
                     transfer_files(files_to_transfer, error_folder, "move")
@@ -469,7 +475,9 @@ def process_output_ocr(
                             f"Не удалось загрузить данные в ЦУП "
                             f"по номеру сделки {transaction_numbers}.\n"
                         )
-                        formatted_json_data = format_json_data(json_data, "\nРаспознанные данные:")
+                        formatted_json_data = format_json_data(
+                            json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):"
+                        )
                         logger.warning(f"❌ {error_message} ({json_file})")
                         metadata["errors"][source_file_name].append(f"{error_message}{formatted_json_data}")
                         transfer_files(files_to_transfer, error_folder, "move")
