@@ -400,7 +400,7 @@ def process_output_ocr(
                 # Обновляем JSON-данные дополнительной информацией
                 json_data.update({
                     "transaction_numbers": transaction_numbers,
-                    "source_file_name": f"КС_{json_data['bill_of_lading']}{source_file.suffix}",
+                    "source_file_name": f"КС_{json_data['bill_of_lading']}_AUTO{source_file.suffix}",
                     "source_file_base64": file_to_base64(source_file),
                 })
                 # Сохраняем обновленный JSON-файл
