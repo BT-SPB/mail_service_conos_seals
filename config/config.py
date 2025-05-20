@@ -191,8 +191,8 @@ class Config(BaseSettings):
             str: Строковое представление конфигурации.
         """
         # Формирование заголовка и завершающей линии
-        title = "\n" + "  CONFIG PARAMS  ".center(80, "=")
-        end = "=" * 80
+        title = "\n" + "  CONFIG PARAMS  ".center(60, "=")
+        end = "=" * 60
 
         # Исключение конфиденциальных полей из вывода
         config_dict = self.model_dump(

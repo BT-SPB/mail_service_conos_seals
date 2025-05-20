@@ -121,8 +121,30 @@ def cup_http_request(
             continue
 
 
+def remap_production_data(data: dict[str, any]) -> None:
+    """
+    Подготавливает словарь с данными для отправки в 1С, переименовывая поля и удаляя ненужные.
+
+    Функция изменяет входной словарь, подготавливая его для отправки на сервер 1С.
+    Удаляет ненужные поля и переименовывает ключи в соответствии с требованиями системы.
+    """
+    # Переименование ключей верхнего уровня с использованием значений по умолчанию
+    data["ИмпМорскаяПеревозкаДатаПолученияДУ"] = data.pop("document_created_datetime", "")
+    data["ИмпМорскаяПеревозкаНомерРейсаФидер"] = data.pop("voyage_number", "")
+    # Удаление поля document_type
+    data.pop("document_type", None)
+
+    # Обработка списка контейнеров
+    for container in data.get("containers", []):
+        # Переименование ключей в словаре контейнера
+        container["ИмпМорскаяПеревозкаНомерПломбы"] = container.pop("seals", [])
+        container["ИмпМорскаяПеревозкаДатаВыгрузкиКонтейнера"] = container.pop("upload_datetime", "")
+        # Удаление поля note
+        container.pop("note", None)
+
+
 def send_production_data(
-        data_source: dict,
+        data_source: dict[str, any],
         kappa: bool = False,
         user_1c: str = CONFIG.USER_1C,
         password_1c: str = CONFIG.PASSWORD_1C,
@@ -138,13 +160,16 @@ def send_production_data(
         Ожидается следующая структура:
         {
             "bill_of_lading": str,            # Номер коносамента
+            "document_created_datetime": str, # Дата ДО
+            "voyage_number": str,             # Номер рейса
             "transaction_numbers": list[str], # Список номеров и дат транзакций, полученных с помощью TransactionNumberFromBillOfLading
             "source_file_name": str,          # Название исходного файла
             "source_file_base64": str,        # Исходный файл, закодированный в base64
             "containers": [                   # Список контейнеров
                 {
                     "container": str,         # Номер контейнера
-                    "seals": list[str]        # Список пломб (одна или несколько строк)
+                    "seals": list[str],       # Список пломб (одна или несколько строк)
+                    "upload_datetime": str    # Дата выгрузки
                 },
                 ...
             ]
@@ -178,7 +203,10 @@ def send_production_data(
     # Создаем глубокую копию входных данных, чтобы избежать изменения оригинала
     data = copy.deepcopy(data_source)
 
-    # Константа для имени функции на сервере
+    # Подготовка данных: переименование и удаление полей для соответствия формату 1С
+    remap_production_data(data)
+
+    # Имя функции на сервере 1С
     function_name: str = "SendProductionDataToTransaction"
 
     # Определяем порядок серверов в зависимости от флага kappa
@@ -235,17 +263,22 @@ def send_production_data(
     return success_flag
 
 # if __name__ == "__main__":
-# #     from src.utils import read_json
-# #
-# #     data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\large.json")
-# #     send_production_data(data_json, kappa=True)
-# #
-# #     print(data_json)
+#     from src.utils import read_json, write_json
 #
-#     func = r'TransactionNumberFromBillOfLading'
-#     arg = r'MEDUAS937386'
-#     tn = cup_http_request(func, arg)
-#     print(tn)
+#     # data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\large.json")
+#     # send_production_data(data_json, kappa=True)
+#     # print(data_json)
 #
-#     func = "GetTransportPositionNumberByTransactionNumber"
-#     print(cup_http_request(func, tn[-1].split()[0], encode=False))
+#     data_json = read_json(
+#         r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\WORKFLOW\SUCCESS\test_out_1\ДУ_EGML001367.pdf.json")
+#     remap_production_data(data_json)
+#     write_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\WORKFLOW\SUCCESS\test_out_1\new.json",
+#                data_json)
+#
+#     # func = r'TransactionNumberFromBillOfLading'
+#     # arg = r'MEDUAS937386'
+#     # tn = cup_http_request(func, arg)
+#     # print(tn)
+#     #
+#     # func = "GetTransportPositionNumberByTransactionNumber"
+#     # print(cup_http_request(func, tn[-1].split()[0], encode=False))

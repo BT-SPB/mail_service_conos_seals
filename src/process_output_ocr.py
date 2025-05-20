@@ -1,3 +1,4 @@
+import re
 import shutil
 from pathlib import Path
 from collections import defaultdict
@@ -16,50 +17,119 @@ from src.utils_1c import cup_http_request, send_production_data
 from src.utils_email import send_email, convert_email_date_to_moscow
 
 
-def format_json_data(
+def update_json(
+        data: dict[str, any],
+        source_file: Path,
+        transaction_numbers: list[str]
+) -> None:
+    """Обновляет словарь с JSON-данными, добавляя или изменяя определенные поля.
+
+    Функция модифицирует входной словарь `data`, добавляя или обновляя поля, связанные
+    с типом документа, датой создания, номерами транзакций, именем исходного файла
+    и его содержимым в формате base64. Также обновляет информацию о контейнерах,
+    устанавливая дату загрузки и обрабатывая заметки с учетом запрета ОПК.
+
+    Args:
+        data: Словарь с JSON-данными, который будет обновлен
+        source_file: Объект Path, представляющий путь к исходному файлу
+        transaction_numbers: Список строк с номерами транзакций
+
+    Returns:
+        None: Функция изменяет словарь `data` на месте и ничего не возвращает.
+    """
+    # Устанавливаем значения по умолчанию для типа документа, даты и рейса, если они отсутствуют
+    data.setdefault("document_type", "КС")
+    data.setdefault("document_created_datetime", "")
+    data.setdefault("voyage_number", "")
+
+    # Обрабатываем список контейнеров, если он присутствует в данных
+    for container in data.get("containers", []):
+        # Устанавливаем дату загрузки по умолчанию, если она отсутствует.
+        container.setdefault("upload_datetime", "")
+
+        # Проверяем наличие фразы "запрет опк" в заметках контейнера.
+        note = container.get("note", "")
+        container["note"] = "Запрет ОПК" if re.search(r"запрет\s+опк", note, re.IGNORECASE) else ""
+
+    # Обновляем JSON-данные дополнительной информацией
+    data.update({
+        "transaction_numbers": transaction_numbers,
+        "source_file_name": f"{data['document_type']}_{data['bill_of_lading']}_AUTO{source_file.suffix}",
+        "source_file_base64": file_to_base64(source_file),
+    })
+
+
+def format_json_data_to_mail(
         json_data: dict[str, any],
         title: str | None = None
 ) -> str:
-    """Форматирует данные из словаря JSON в строку с информацией о коносаменте, транзакциях и контейнерах.
+    """Форматирует данные из словаря JSON в читаемую строку с информацией о коносаменте, транзакциях и контейнерах.
 
-    Проверяет наличие ключей 'bill_of_lading', 'transaction_numbers' и 'containers' в словаре.
-    Для 'containers' проверяет, что это список словарей, содержащих ключи 'container' и 'seals'.
-    Если задан заголовок (title), добавляет его в начало строки. Формирует строку в формате:
+    Функция проверяет наличие ключей 'document_type', 'document_created_datetime', 'bill_of_lading',
+    'transaction_numbers' и 'containers' в словаре `json_data`. Для поля 'containers' дополнительно
+    проверяется, что оно является списком словарей с обязательными ключами 'container' и 'seals'.
+    Если указан заголовок (`title`), он добавляется в начало результата. Форматирование результата
+    выполняется в следующем виде:
         <title>
+        document_type: <значение>
         bill_of_lading: <значение>
+        date_do: <значение>
+        voyage_number: <значение>
         transaction_numbers: <значение>
         containers:
-            • <container>: <seals>
-    Добавляет только строки для существующих и валидных полей. Если в результате только заголовок,
-    возвращается пустая строка.
+            - <container>: <seals> [- <upload_datetime>] [- <note>]
+    Если после обработки нет данных (только заголовок или ничего), возвращается пустая строка.
 
     Args:
-        json_data: Словарь с данными, содержащий ключи 'bill_of_lading' (строка),
-            'transaction_numbers' (список строк), 'containers' (список словарей
-            с ключами 'container' и 'seals')
-        title: Заголовок для добавления в начало строки (опционально, по умолчанию None)
+        json_data: Словарь с данными, содержащий:
+            - 'document_type': строка с типом документа (опционально)
+            - 'bill_of_lading': строка с номером коносамента (опционально)
+            - 'document_created_datetime': строка с датой создания документа (опционально)
+            - 'voyage_number': строка с номером рейса
+            - 'transaction_numbers': список строк с номерами транзакций (опционально)
+            - 'containers': список словарей, где каждый словарь содержит ключи:
+                - 'container': строка с номером контейнера
+                - 'seals': строка или список строк с номерами пломб
+                - 'upload_datetime': строка с датой загрузки (опционально)
+                - 'note': строка с примечаниями (опционально)
+        title: Заголовок, добавляемый в начало строки (опционально, по умолчанию None)
 
     Returns:
-        str: Отформатированная строка с данными. Если нет валидных полей или только заголовок,
+        str: Отформатированная строка с данными. Если нет валидных полей или добавлен только заголовок,
             возвращается пустая строка.
     """
-    # Инициализируем список строк для формирования результата
-    result_lines: list[str] = []
+    # Инициализируем список для накопления строк результата
+    output_lines: list[str] = []
 
     # Добавляем заголовок, если он задан и не пустой
     if title and title.strip():
-        result_lines.append(title)
+        output_lines.append(title)
 
     # Считаем, сколько строк было до добавления данных (для проверки только заголовка)
-    initial_length = len(result_lines)
+    initial_length = len(output_lines)
+
+    # Добавляем тип документа
+    if document_type := json_data.get("document_type"):
+        output_lines.append(f"Тип документа: {document_type}")
 
     # Добавляем bill_of_lading, если ключ существует и значение не пустое
     if bill_of_lading := json_data.get("bill_of_lading"):
-        result_lines.append(f"bill_of_lading: {bill_of_lading}")
+        output_lines.append(f"Номер коносамента: {bill_of_lading}")
+
+    # Добавляем дату создания документа
+    if date_do := json_data.get("document_created_datetime"):
+        output_lines.append(f"Дата ДО: {date_do}")
+
+    # Добавляем номер рейса
+    if voyage_number := json_data.get("voyage_number"):
+        output_lines.append(f"Номер рейса: {voyage_number}")
 
     # Добавляем transaction_numbers, если ключ существует и значение не пустое
     if transaction_numbers := json_data.get("transaction_numbers"):
-        result_lines.append(f"transaction_numbers: {transaction_numbers}")
+        if isinstance(transaction_numbers, list):
+            # Форматируем список транзакций в строку, разделяя элементы запятыми
+            formatted_transactions = ", ".join(str(t) for t in transaction_numbers)
+            output_lines.append(f"Номера сделок: {formatted_transactions}")
 
     # Обрабатываем containers: проверяем, что это список, и форматируем каждый контейнер
     if containers := json_data.get("containers"):
@@ -71,14 +141,29 @@ def format_json_data(
             ]
             # Добавляем секцию containers, если есть валидные контейнеры
             if valid_containers:
-                result_lines.append("containers:")
-                result_lines.extend(
-                    f"{' ' * 4}- {cont['container']}: {cont['seals']}"
-                    for cont in valid_containers
-                )
+                # Добавление заголовка секции контейнеров
+                output_lines.append("Контейнеры:")
+                for container in valid_containers:
+                    # Извлечение номера контейнера и пломб
+                    container_number = container["container"]
+                    seals = container["seals"]
+                    # Форматирование пломб: если это список, объединяем элементы через запятую
+                    seals_formatted = ", ".join(seals) if isinstance(seals, list) else seals
+                    # Формирование базовой строки для контейнера
+                    container_line = f"{' ' * 4}- {container_number}: [{seals_formatted}]"
+
+                    # Добавление даты загрузки, если она указана
+                    if upload_datetime := container.get("upload_datetime"):
+                        container_line += f" - {upload_datetime}"
+
+                    # Добавление примечаний, если они указаны
+                    if note := container.get("note"):
+                        container_line += f" - {note}"
+
+                    output_lines.append(container_line)
 
     # Возвращаем пустую строку, если добавлен только заголовок или ничего
-    return "\n".join(result_lines) if len(result_lines) > initial_length else ""
+    return "\n".join(output_lines) if len(output_lines) > initial_length else ""
 
 
 def formatted_text_from_data(
@@ -255,6 +340,8 @@ def process_output_ocr(
             error_folder = sanitize_pathname(CONFIG.ERROR_FOLDER, folder.name, is_file=False)
             success_folder = sanitize_pathname(CONFIG.SUCCESS_FOLDER, folder.name, is_file=False)
 
+            container_notes: list[str] = []
+
             # Проверяем целостность метаданных: наличие и типы всех обязательных полей
             required_fields = {
                 "subject": str,
@@ -389,7 +476,7 @@ def process_output_ocr(
                         f"Возможно, номер коносамента ({json_data['bill_of_lading']}) "
                         f"распознан неверно."
                     )
-                    formatted_json_data = format_json_data(
+                    formatted_json_data = format_json_data_to_mail(
                         json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):"
                     )
                     logger.warning(f"⚠️ {error_message} ({json_file})")
@@ -398,11 +485,7 @@ def process_output_ocr(
                     continue
 
                 # Обновляем JSON-данные дополнительной информацией
-                json_data.update({
-                    "transaction_numbers": transaction_numbers,
-                    "source_file_name": f"КС_{json_data['bill_of_lading']}_AUTO{source_file.suffix}",
-                    "source_file_base64": file_to_base64(source_file),
-                })
+                update_json(json_data, source_file, transaction_numbers)
                 # Сохраняем обновленный JSON-файл
                 write_json(json_file, json_data)
 
@@ -424,7 +507,7 @@ def process_output_ocr(
                         f"Номера контейнеров по номеру сделки ({transaction_numbers}) "
                         f"из ЦУП отсутствуют."
                     )
-                    formatted_json_data = format_json_data(
+                    formatted_json_data = format_json_data_to_mail(
                         json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):"
                     )
                     logger.warning(f"⚠️ {error_message} ({source_file})")
@@ -443,7 +526,7 @@ def process_output_ocr(
                         f"не совпадают с номерами из ЦУП ({', '.join(container_numbers_cup_set)}) "
                         f"по номеру сделки {transaction_numbers}."
                     )
-                    formatted_json_data = format_json_data(
+                    formatted_json_data = format_json_data_to_mail(
                         json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):"
                     )
                     logger.warning(f"⚠️ {error_message} ({source_file})")
@@ -475,7 +558,7 @@ def process_output_ocr(
                             f"Не удалось загрузить данные в ЦУП "
                             f"по номеру сделки {transaction_numbers}.\n"
                         )
-                        formatted_json_data = format_json_data(
+                        formatted_json_data = format_json_data_to_mail(
                             json_data, "\nРаспознанные данные (НЕ загружены в ЦУП):"
                         )
                         logger.warning(f"❌ {error_message} ({json_file})")
@@ -489,10 +572,13 @@ def process_output_ocr(
                     )
 
                 # Формируем сообщение об успехе и перемещаем файлы в директорию успешной обработки
-                success_message = format_json_data(json_data, "Загруженные данные:")
+                success_message = format_json_data_to_mail(json_data, "Загруженные данные:")
                 logger.info(f"✔️ Файл обработан успешно: {source_file}")
                 metadata["successes"][source_file_name].append(success_message)
                 transfer_files(files_to_transfer, success_folder, "move")
+
+                # Добавляем в список все примечания для контейнеров
+                container_notes.extend(cont["note"] for cont in json_data.get("containers", []) if cont["note"])
 
             # Формируем список частично успешных файлов (которые есть одновременно
             # в errors и successes) с сохранением порядка
@@ -511,14 +597,21 @@ def process_output_ocr(
             # Сохраняем обновленные метаданные после обработки всех файлов в директории
             write_json(metadata_file, metadata)
 
+            # Удаляем дубликаты из списка примечаний для контейнеров
+            container_notes = list(dict.fromkeys(container_notes))
+
             # Формируем и отправляем email, если есть сообщения
             email_text = format_email_message(metadata, error_folder)
             if email_text:
+                subject = f"Автоответ по коносаментам"
+                if container_notes:
+                    subject += f" + {', '.join(container_notes)}"
+
                 send_email(
                     email_text=email_text,
                     # recipient_emails=metadata["sender"],
                     recipient_emails=CONFIG.notification_emails,
-                    subject=f"Автоответ от {email_user}",
+                    subject=subject,
                     email_user=email_user,
                     email_pass=email_pass,
                     smtp_server=smtp_server,
