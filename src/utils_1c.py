@@ -269,16 +269,16 @@ def send_production_data(
 #     # send_production_data(data_json, kappa=True)
 #     # print(data_json)
 #
-#     data_json = read_json(
-#         r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\WORKFLOW\SUCCESS\test_out_1\ДУ_EGML001367.pdf.json")
-#     remap_production_data(data_json)
-#     write_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\WORKFLOW\SUCCESS\test_out_1\new.json",
-#                data_json)
+#     # data_json = read_json(
+#     #     r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\WORKFLOW\SUCCESS\test_out_1\ДУ_EGML001367.pdf.json")
+#     # remap_production_data(data_json)
+#     # write_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\WORKFLOW\SUCCESS\test_out_1\new.json",
+#     #            data_json)
 #
-#     # func = r'TransactionNumberFromBillOfLading'
-#     # arg = r'MEDUAS937386'
-#     # tn = cup_http_request(func, arg)
-#     # print(tn)
-#     #
-#     # func = "GetTransportPositionNumberByTransactionNumber"
-#     # print(cup_http_request(func, tn[-1].split()[0], encode=False))
+#     func = r'TransactionNumberFromBillOfLading'
+#     arg = r'AKKNVS23075952'
+#     tn = cup_http_request(func, arg)
+#     print(tn)
+#
+#     func = "GetTransportPositionNumberByTransactionNumber"
+#     print(cup_http_request(func, tn[-1].split()[0], encode=False))
