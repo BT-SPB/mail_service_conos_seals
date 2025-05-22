@@ -222,19 +222,19 @@ def send_email(
         logger.error(f"Некорректные адреса получателей: {recipients}")
         return
 
-    format_email_log = (
-        f"📧 ИСХОДЯЩИЙ EMAIL:\n"
-        f"{'-' * 60}\n"
-        f"Получатели: {', '.join(recipients)}\n"
-        f"Тема: {subject}\n"
-        f"Текст:\n{email_text}\n"
-        f"{'-' * 60}"
-    )
+    def format_email_log(title: str) -> str:
+        return (
+            f"{title}\n"
+            f"{'-' * 60}\n"
+            f"Получатели: {', '.join(recipients)}\n"
+            f"Тема: {subject}\n"
+            f"Текст:\n{email_text}\n"
+            f"{'-' * 60}"
+        )
 
     # Проверка настройки блокировки отправки
     if CONFIG.block_email_sending:
-        logger.debug(f"📧 Отправка email заблокирована настройкой block_email_sending")
-        logger.info(format_email_log)
+        logger.info(format_email_log(f"📧 Отправка email ЗАБЛОКИРОВАНА настройкой 'block_email_sending'"))
         return
 
     try:
@@ -249,8 +249,7 @@ def send_email(
             server.send_message(msg, from_addr=email_user, to_addrs=recipients)  # Отправка письма
 
         # Логирование успешной отправки
-        logger.info(f"📧 Email успешно отправлен: {subject}")
-        logger.info(format_email_log)
+        logger.info(format_email_log(f"📧 Email успешно отправлен"))
 
     except smtplib.SMTPException as smtp_error:
         # Обработка специфичных ошибок SMTP (например, неверные учетные данные)

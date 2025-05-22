@@ -148,7 +148,7 @@ class EmailMonitor:
                     # Получаем данные письма без изменения статуса (BODY.PEEK)
                     msg_data = self.server.fetch(msg_id, ["BODY.PEEK[]"])
                     if not msg_data or msg_id not in msg_data:
-                        logger.error(f"❌ Не удалось получить данные письма ID {msg_id}")
+                        logger.error(f"❌ Не удалось получить данные письма (id {msg_id})")
                         continue
 
                     # Парсим письмо в объект Message для удобной работы с содержимым
@@ -170,13 +170,15 @@ class EmailMonitor:
                     attachments: list[tuple[str, bytes]] = extract_attachments(email_message)
 
                     if not attachments:
-                        logger.info(f"📧 Письмо от {metadata['sender']} не содержит вложений")
+                        logger.info(f"📧 Письмо от {metadata['sender']} (id {msg_id}) не содержит вложений")
                         # Отметка письма как прочитанного
                         self.server.add_flags(msg_id, ["\\Seen"])
                         continue
 
                     # Обработка вложений при их наличии
-                    logger.info(f"📧 В письме от {metadata['sender']} найдено вложений: {len(attachments)}")
+                    logger.info(
+                        f"📧 В письме от {metadata['sender']} (id {msg_id}) найдено вложений: {len(attachments)}"
+                    )
 
                     # Формирование уникального имени папки на основе даты и времени отправки письма
                     date_time = convert_email_date_to_moscow(metadata["date"], "%y%m%d_%H%M%S")
@@ -220,10 +222,10 @@ class EmailMonitor:
 
                     # Отмечаем письмо как прочитанное после успешной обработки
                     self.server.add_flags(msg_id, ["\\Seen"])
-                    logger.info(f"✔️ Письмо ID {msg_id} обработано и отмечено как прочитанное")
+                    logger.info(f"✔️ Письмо (id {msg_id}) обработано и отмечено как прочитанное")
 
                 except Exception as e:
-                    logger.exception(f"⛔ Ошибка обработки письма ID {msg_id}: {e}")
+                    logger.exception(f"⛔ Ошибка обработки письма (id {msg_id}): {e}")
 
         except Exception as e:
             logger.exception(f"⛔ Произошла ошибка при обработке писем: {e}")

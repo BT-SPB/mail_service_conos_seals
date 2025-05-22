@@ -568,7 +568,7 @@ def process_output_ocr(
                 else:
                     logger.debug(
                         "🔔 Отправка данных в ЦУП отключена настройкой "
-                        "enable_send_production_data"
+                        "'enable_send_production_data'"
                     )
 
                 # Формируем сообщение об успехе и перемещаем файлы в директорию успешной обработки
@@ -603,7 +603,7 @@ def process_output_ocr(
             # Формируем и отправляем email, если есть сообщения
             email_text = format_email_message(metadata, error_folder)
             if email_text:
-                subject = f"Автоответ по коносаментам"
+                subject = f"Автоответ: {metadata['subject']}"
                 if container_notes:
                     subject += f" + {', '.join(container_notes)}"
 
