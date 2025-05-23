@@ -8,7 +8,8 @@ from requests.auth import HTTPBasicAuth
 
 from config import CONFIG
 from src.logger import logger
-from src.utils import write_json
+
+# from src.utils import write_json
 
 KAPPA_URL = "http://kappa5.group.ru:81/ca/hs/interaction/"
 LOCAL_URL = "http://10.10.0.10:81/ca/hs/interaction/"
@@ -129,26 +130,19 @@ def remap_production_data(data: dict[str, any]) -> None:
     Функция изменяет входной словарь, подготавливая его для отправки на сервер 1С.
     Удаляет ненужные поля и переименовывает ключи в соответствии с требованиями системы.
     """
-    # # Переименование ключей верхнего уровня с использованием значений по умолчанию
-    # data["ИмпМорскаяПеревозкаДатаПолученияДУ"] = data.pop("document_created_datetime", "")
+    # Переименование ключей верхнего уровня с использованием значений по умолчанию
+    data["ИмпМорскаяПеревозкаДатаПолученияДУ"] = data.pop("document_created_datetime", "")
     # data["ИмпМорскаяПеревозкаНомерРейсаФидер"] = data.pop("voyage_number", "")
-    # # Удаление поля document_type
-    # data.pop("document_type", None)
-    #
-    # # Обработка списка контейнеров
-    # for container in data.get("containers", []):
-    #     # Переименование ключей в словаре контейнера
-    #     container["ИмпМорскаяПеревозкаНомерПломбы"] = container.pop("seals", [])
-    #     container["ИмпМорскаяПеревозкаДатаВыгрузкиКонтейнера"] = container.pop("upload_datetime", "")
-    #     # Удаление поля note
-    #     container.pop("note", None)
+    data.pop("voyage_number", None)  # Временно
+    # Инициализация бинарного признака "ЭтоКоносамент"
+    data["ЭтоКоносамент"] = "true" if data.pop("document_type", "КС") == "КС" else "false"
 
-    # Временно
-    data.pop("document_created_datetime", None)
-    data.pop("voyage_number", None)
-    data.pop("document_type", None)
+    # Обработка списка контейнеров
     for container in data.get("containers", []):
-        container.pop("upload_datetime", None)
+        # Переименование ключей в словаре контейнера
+        container["ИмпМорскаяПеревозкаНомерПломбы"] = container.pop("seals", [])
+        container["ИмпМорскаяПеревозкаДатаВыгрузкиКонтейнера"] = container.pop("upload_datetime", "")
+        # Удаление поля note
         container.pop("note", None)
 
 
@@ -238,7 +232,7 @@ def send_production_data(
         # Добавляем текущий номер транзакции в данные для отправки
         data["transaction_number"] = transaction_number
 
-        # Для отладки
+        # # Для отладки
         # write_json(
         #     rf"C:\Users\Cherdantsev\Desktop\new\data_{data['bill_of_lading']}_{transaction_number}.json",
         #     data
@@ -280,7 +274,7 @@ def send_production_data(
 # if __name__ == "__main__":
 #     from src.utils import read_json, write_json
 #
-#     data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf.json")
+#     data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf__.json")
 #     send_production_data(data_json)
 #     print(data_json)
 #
