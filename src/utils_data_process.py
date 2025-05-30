@@ -302,8 +302,8 @@ def remap_production_data_for_1c(data_source: dict[str, any]) -> dict[str, any]:
 
     # Переименование ключей верхнего уровня с использованием значений по умолчанию
     data["ИмпМорскаяПеревозкаДатаПолученияДУ"] = data.pop("document_created_datetime", "")
-    # data["ИмпМорскаяПеревозкаНомерРейсаФидер"] = data.pop("voyage_number", "")
-    data.pop("voyage_number", None)  # Временно
+    data["ИмпМорскаяПеревозкаНомерРейсаФидер"] = data.pop("voyage_number", "")
+    # data.pop("voyage_number", None)  # Временно
     # Инициализация бинарного признака "ЭтоКоносамент"
     data["ЭтоКоносамент"] = "true" if data.pop("document_type", "КС") == "КС" else "false"
 

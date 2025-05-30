@@ -1,4 +1,3 @@
-import copy
 import base64
 from typing import Callable
 from functools import wraps
@@ -124,7 +123,7 @@ def cup_http_request(
 
 
 def send_production_data(
-        data_source: dict[str, any],
+        data: dict[str, any],
         kappa: bool = False,
         user_1c: str = CONFIG.USER_1C,
         password_1c: str = CONFIG.PASSWORD_1C,
@@ -136,7 +135,7 @@ def send_production_data(
     при неудаче — повторяет попытку на резервный.
 
     Args:
-        data_source (dict): Словарь с производственными данными, которые необходимо отправить
+        data (dict): Словарь с производственными данными, которые необходимо отправить
         Ожидается следующая структура:
         {
             "bill_of_lading": str,                      # Номер коносамента
@@ -186,9 +185,6 @@ def send_production_data(
     Returns:
         True - при успешной отправке всех данных на сервер. False - при неудаче хотя бы одной отправки.
     """
-    # Создаем глубокую копию входных данных, чтобы избежать изменения оригинала
-    data = copy.deepcopy(data_source)
-
     # Имя функции на сервере 1С
     function_name: str = "SendProductionDataToTransaction"
 
@@ -198,60 +194,47 @@ def send_production_data(
         f"{LOCAL_URL if kappa else KAPPA_URL}{function_name}"
     ]
 
-    # Заголовки для передачи JSON с указанием кодировки
-    headers = {"Content-Type": "application/json; charset=utf-8"}
+    for url in urls:
+        try:
+            logger.debug(f"🌐 Попытка отправки данных на {url} для транзакций {data['transaction_numbers']}")
+            # Выполняем POST-запрос с максимальным таймаутом 60 секунд
+            response = requests.post(
+                url,
+                auth=HTTPBasicAuth(user_1c, password_1c),
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                json=data,
+                timeout=60
+            )
 
-    # Извлекаем список номеров транзакций, удаляя их из словаря данных
-    transaction_numbers: list[str] = data.pop("transaction_numbers", [])
-
-    # Флаг успешной отправки хотя бы одной транзакции
-    success_flag = False
-
-    # Для каждого номера сделки отправляем отдельный запрос
-    for transaction_number in transaction_numbers:
-        # Добавляем текущий номер транзакции в данные для отправки
-        data["transaction_number"] = transaction_number
-
-        for url in urls:
-            try:
-                logger.debug(f"🌐 Попытка отправки данных на {url} для транзакции {transaction_number}")
-                # Выполняем POST-запрос с максимальным таймаутом 60 секунд
-                response = requests.post(
-                    url,
-                    auth=HTTPBasicAuth(user_1c, password_1c),
-                    headers=headers,
-                    json=data,
-                    timeout=60
+            if response.status_code == 200:
+                logger.debug(
+                    f"✔️ Данные успешно отправлены в сделки: {data['transaction_numbers']}. "
+                    f"Ответ: {response.text or 'пустой'}"
+                )
+                return True
+            else:
+                # Логируем неуспешный ответ сервера
+                logger.warning(
+                    f"⚠️ Ошибка при отправке данных для транзакций: {data['transaction_numbers']}. "
+                    f"Код: {response.status_code}, Ответ: {response.text}"
                 )
 
-                if response.status_code == 200:
-                    logger.debug(
-                        f"✔️ Данные успешно отправлены в сделку: {transaction_number}. "
-                        f"Ответ: {response.text or 'пустой'}"
-                    )
-                    success_flag = True
-                    break  # Прерываем цикл по серверам при успехе
-                else:
-                    # Логируем неуспешный ответ сервера
-                    logger.warning(
-                        f"⚠️ Ошибка при отправке данных для транзакции {transaction_number}. "
-                        f"Код: {response.status_code}, Ответ: {response.text}"
-                    )
+        except requests.exceptions.RequestException as e:
+            # Логируем исключение при сетевой ошибке
+            logger.exception(f"⛔ Сетевая ошибка при отправке на {url}: {e}")
+            continue  # Пробуем резервный сервер
 
-            except requests.exceptions.RequestException as e:
-                # Логируем исключение при сетевой ошибке
-                logger.exception(f"⛔ Сетевая ошибка при отправке на {url}: {e}")
-                continue  # Пробуем резервный сервер
-
-    return success_flag
-
+    return False
 
 # if __name__ == "__main__":
-#     # from src.utils import read_json, write_json
+#     from src.utils import read_json, write_json
+#     from src.utils_data_process import remap_production_data_for_1c
 #
+#     data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf_one_cont.json")
 #     # data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf_one_cont.json")
-#     # # data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf_full.json")
-#     # send_production_data(data_json)
+#     data_json = remap_production_data_for_1c(data_json)
+#     write_json(r"C:\Users\Cherdantsev\Desktop\test\test.json", data_json)
+#     send_production_data(data_json)
 #     # print(data_json)
 #
 #     # data_json = read_json(
@@ -261,10 +244,10 @@ def send_production_data(
 #     # write_json(r"C:\Users\Cherdantsev\Desktop\250528_173535_aby@sdrzbt.ru\КС_AKKSUS25060413SRV.pdf.json",
 #     #            data_json)
 #
-#     func = r'TransactionNumberFromBillOfLading'
-#     arg = r'AKKSUS25060412'
-#     for i in range(2):
-#         tn = cup_http_request(func, arg)
+#     # func = r'TransactionNumberFromBillOfLading'
+#     # arg = r'AKKSUS25060412'
+#     # for i in range(2):
+#     #     tn = cup_http_request(func, arg)
 #     # print(tn)
 #
 #     # func = "GetTransportPositionNumberByTransactionNumber"
