@@ -9,8 +9,6 @@ from requests.auth import HTTPBasicAuth
 from config import CONFIG
 from src.logger import logger
 
-# from src.utils import write_json
-
 KAPPA_URL = "http://kappa5.group.ru:81/ca/hs/interaction/"
 LOCAL_URL = "http://10.10.0.10:81/ca/hs/interaction/"
 
@@ -33,16 +31,18 @@ def cache_http_requests(func: Callable) -> Callable:
     def wrapper(function: str, *args: str, **kwargs) -> list | dict | None:
         # Формируем ключ кэша из названия функции и аргументов
         function_args = "_".join(args)
-        url_cache_key = f"{function}_{function_args}"
+        cache_key = f"{function}_{function_args}"
 
         # Проверка, есть ли результат в кэше
-        if url_cache_key in cache:
-            logger.debug("💾 Получение результата из кэша.")
-            return cache[url_cache_key]
+        if cache_key in cache:
+            cache_value = cache[cache_key]
+            logger.debug(f"🌐 Повторный вызов функции: {function}/{'/'.join(args)}")
+            logger.debug(f"💾 Результат возвращён из кэша: {cache_value}")
+            return cache_value
 
         # Выполнение оригинальной функции
         result = func(function, *args, **kwargs)
-        cache[url_cache_key] = result
+        cache[cache_key] = result
 
         # Ограничение размера кэша
         if len(cache) > max_cache_size:
@@ -123,29 +123,6 @@ def cup_http_request(
             continue
 
 
-def remap_production_data(data: dict[str, any]) -> None:
-    """
-    Подготавливает словарь с данными для отправки в 1С, переименовывая поля и удаляя ненужные.
-
-    Функция изменяет входной словарь, подготавливая его для отправки на сервер 1С.
-    Удаляет ненужные поля и переименовывает ключи в соответствии с требованиями системы.
-    """
-    # Переименование ключей верхнего уровня с использованием значений по умолчанию
-    data["ИмпМорскаяПеревозкаДатаПолученияДУ"] = data.pop("document_created_datetime", "")
-    # data["ИмпМорскаяПеревозкаНомерРейсаФидер"] = data.pop("voyage_number", "")
-    data.pop("voyage_number", None)  # Временно
-    # Инициализация бинарного признака "ЭтоКоносамент"
-    data["ЭтоКоносамент"] = "true" if data.pop("document_type", "КС") == "КС" else "false"
-
-    # Обработка списка контейнеров
-    for container in data.get("containers", []):
-        # Переименование ключей в словаре контейнера
-        container["ИмпМорскаяПеревозкаНомерПломбы"] = container.pop("seals", [])
-        container["ИмпМорскаяПеревозкаДатаВыгрузкиКонтейнера"] = container.pop("upload_datetime", "")
-        # Удаление поля note
-        container.pop("note", None)
-
-
 def send_production_data(
         data_source: dict[str, any],
         kappa: bool = False,
@@ -162,39 +139,45 @@ def send_production_data(
         data_source (dict): Словарь с производственными данными, которые необходимо отправить
         Ожидается следующая структура:
         {
-            "bill_of_lading": str,            # Номер коносамента
-            "document_created_datetime": str, # Дата ДО
-            "voyage_number": str,             # Номер рейса
-            "transaction_numbers": list[str], # Список номеров и дат транзакций, полученных с помощью TransactionNumberFromBillOfLading
-            "source_file_name": str,          # Название исходного файла
-            "source_file_base64": str,        # Исходный файл, закодированный в base64
-            "containers": [                   # Список контейнеров
+            "bill_of_lading": str,                      # Номер коносамента
+            "ИмпМорскаяПеревозкаДатаПолученияДУ": str,  # Дата ДО
+            "ИмпМорскаяПеревозкаНомерРейсаФидер": str,  # Номер рейса
+            "ЭтоКоносамент": str[bool],                 # Флаг, является ли документ коносаментом или нет
+            "transaction_numbers": list[str],           # Список номеров и дат транзакций, полученных с помощью TransactionNumberFromBillOfLading
+            "source_file_name": str,                    # Название исходного файла
+            "source_file_base64": str,                  # Исходный файл, закодированный в base64
+            "containers": [                             # Список контейнеров
                 {
-                    "container": str,         # Номер контейнера
-                    "seals": list[str],       # Список пломб (одна или несколько строк)
-                    "upload_datetime": str    # Дата выгрузки
+                    "container": str,                                 # Номер контейнера
+                    "ИмпМорскаяПеревозкаНомерПломбы": list[str],      # Список пломб (одна или несколько строк)
+                    "ИмпМорскаяПеревозкаДатаВыгрузкиКонтейнера": str  # Дата выгрузки
                 },
                 ...
             ]
         }
 
         Пример корректного значения:
-            {
-                "bill_of_lading": "VX75EA25000897",
-                "transaction_numbers": ["АА-0095444 от 14.04.2025", "АА-0095445 от 15.04.2025"],
-                "source_file_name": "КС_VX75EA25000897.pdf",
-                "source_file_base64": "JVBERi0xLjcKJeLjz9MK...",
-                "containers": [
-                    {
-                        "container": "DFTU1001462",
-                        "seals": ["22528791", "2252880"]
-                    },
-                    {
-                        "container": "DFTU1001502",
-                        "seals": ["2117691"]
-                    }
-                ]
-            }
+        {
+            "bill_of_lading": "VX75EA25000897",
+            "ИмпМорскаяПеревозкаДатаПолученияДУ": "28.05.2025 00:00:00",
+            "ИмпМорскаяПеревозкаНомерРейсаФидер": "2503",
+            "ЭтоКоносамент": "true",
+            "transaction_numbers": ["АА-0095444 от 14.04.2025", "АА-0095445 от 15.04.2025"],
+            "source_file_name": "КС_VX75EA25000897.pdf",
+            "source_file_base64": "JVBERi0xLjcKJeLjz9MK...",
+            "containers": [
+                {
+                    "container": "DFTU1001462",
+                    "ИмпМорскаяПеревозкаНомерПломбы": ["22528791", "2252880"],
+                    "ИмпМорскаяПеревозкаДатаВыгрузкиКонтейнера": "28.05.2025 11:34:00"
+                },
+                {
+                    "container": "DFTU1001502",
+                    "ИмпМорскаяПеревозкаНомерПломбы": ["2117691"],
+                    "ИмпМорскаяПеревозкаДатаВыгрузкиКонтейнера": "28.05.2025 11:41:00"
+                }
+            ]
+        }
 
         kappa: Если True — основным сервером будет `KAPPA_URL`, иначе `LOCAL_URL`
         user_1c: Имя пользователя для базовой авторизации
@@ -205,9 +188,6 @@ def send_production_data(
     """
     # Создаем глубокую копию входных данных, чтобы избежать изменения оригинала
     data = copy.deepcopy(data_source)
-
-    # Подготовка данных: переименование и удаление полей для соответствия формату 1С
-    remap_production_data(data)
 
     # Имя функции на сервере 1С
     function_name: str = "SendProductionDataToTransaction"
@@ -231,12 +211,6 @@ def send_production_data(
     for transaction_number in transaction_numbers:
         # Добавляем текущий номер транзакции в данные для отправки
         data["transaction_number"] = transaction_number
-
-        # # Для отладки
-        # write_json(
-        #     rf"C:\Users\Cherdantsev\Desktop\new\data_{data['bill_of_lading']}_{transaction_number}.json",
-        #     data
-        # )
 
         for url in urls:
             try:
@@ -271,23 +245,27 @@ def send_production_data(
 
     return success_flag
 
+
 # if __name__ == "__main__":
-#     from src.utils import read_json, write_json
+#     # from src.utils import read_json, write_json
 #
-#     data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf__.json")
-#     send_production_data(data_json)
-#     print(data_json)
+#     # data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf_one_cont.json")
+#     # # data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf_full.json")
+#     # send_production_data(data_json)
+#     # print(data_json)
 #
 #     # data_json = read_json(
-#     #     r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\WORKFLOW\SUCCESS\test_out_1\ДУ_EGML001367.pdf.json")
+#     #     r"C:\Users\Cherdantsev\Desktop\250528_173535_aby@sdrzbt.ru\_КС_AKKSUS25060413SRV.pdf.json"
+#     # )
 #     # remap_production_data(data_json)
-#     # write_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\WORKFLOW\SUCCESS\test_out_1\new.json",
+#     # write_json(r"C:\Users\Cherdantsev\Desktop\250528_173535_aby@sdrzbt.ru\КС_AKKSUS25060413SRV.pdf.json",
 #     #            data_json)
 #
-#     # func = r'TransactionNumberFromBillOfLading'
-#     # arg = r'EGML001367'
-#     # tn = cup_http_request(func, arg)
+#     func = r'TransactionNumberFromBillOfLading'
+#     arg = r'AKKSUS25060412'
+#     for i in range(2):
+#         tn = cup_http_request(func, arg)
 #     # print(tn)
-#     #
+#
 #     # func = "GetTransportPositionNumberByTransactionNumber"
 #     # print(cup_http_request(func, tn[-1].split()[0], encode=False))

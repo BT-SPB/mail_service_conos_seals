@@ -215,7 +215,7 @@ def transfer_files(
         try:
             # Преобразуем путь в Path объект
             src_path = Path(file_path)
-            # Проверяем, существует ли исходный файл
+            # Пропускаем, если файла не существует
             if not src_path.is_file():
                 # logger.info(f"Файл не существует: {src_path}")
                 continue
