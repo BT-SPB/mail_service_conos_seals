@@ -44,7 +44,9 @@ def update_json(
     # Обновляем JSON-данные дополнительной информацией
     data.update({
         "transaction_numbers": transaction_numbers,
-        "source_file_name": f"{data['document_type']}_{data['bill_of_lading']}_AUTO{source_file.suffix}",
+        "source_file_name": (
+            f"{data['document_type'].split('_')[0]}_{data['bill_of_lading']}_AUTO{source_file.suffix}"
+        ),
         "source_file_base64": file_to_base64(source_file),
     })
 
@@ -99,7 +101,7 @@ def format_json_data_to_mail(
     initial_length = len(output_lines)
 
     # Добавляем тип документа
-    if document_type := json_data.get("document_type"):
+    if document_type := json_data.get("document_type").split("_")[0]:
         output_lines.append(f"Тип документа: {document_type}")
 
     # Добавляем bill_of_lading, если ключ существует и значение не пустое
@@ -303,9 +305,8 @@ def remap_production_data_for_1c(data_source: dict[str, any]) -> dict[str, any]:
     # Переименование ключей верхнего уровня с использованием значений по умолчанию
     data["ИмпМорскаяПеревозкаДатаПолученияДУ"] = data.pop("document_created_datetime", "")
     data["ИмпМорскаяПеревозкаНомерРейсаФидер"] = data.pop("voyage_number", "")
-    # data.pop("voyage_number", None)  # Временно
     # Инициализация бинарного признака "ЭтоКоносамент"
-    data["ЭтоКоносамент"] = "true" if data.pop("document_type", "КС") == "КС" else "false"
+    data["ЭтоКоносамент"] = "true" if data.pop("document_type", "КС").startswith("КС") else "false"
 
     # Обработка списка контейнеров
     for container in data.get("containers", []):
@@ -314,5 +315,8 @@ def remap_production_data_for_1c(data_source: dict[str, any]) -> dict[str, any]:
         container["ИмпМорскаяПеревозкаДатаВыгрузкиКонтейнера"] = container.pop("upload_datetime", "")
         # Удаление поля note
         container.pop("note", None)
+
+    # Перемещаем в конец списка закодированный в Base64 исходный файл
+    data["source_file_base64"] = data.pop("source_file_base64", "")
 
     return data
