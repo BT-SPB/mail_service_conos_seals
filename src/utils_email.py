@@ -181,6 +181,52 @@ def extract_attachments(email_message: Message) -> list[tuple[str, bytes]]:
     return attachments
 
 
+# def extract_attachments(email_message: Message) -> list[tuple[str, bytes]]:
+#     """
+#     Извлекает вложения из email-сообщения, включая вложенные письма.
+#
+#     Args:
+#         email_message: Объект email-сообщения для обработки.
+#
+#     Returns:
+#         list[tuple[str, bytes]]: Список кортежей, содержащих имя файла и его содержимое в байтах.
+#     """
+#     attachments: list[tuple[str, bytes]] = []
+#
+#     def extract(msg: Message) -> None:
+#         """Внутренняя рекурсивная функция для извлечения вложений."""
+#         if not msg.is_multipart():
+#             return
+#
+#         for part in msg.walk():
+#             content_type = part.get_content_type()
+#             content_disposition = part.get("Content-Disposition", "")
+#
+#             # Вложение-файл
+#             if content_disposition and "attachment" in content_disposition.lower():
+#                 filename_raw = part.get_filename()  # Получаем имя файла вложения
+#                 payload = part.get_payload(decode=True)  # Получаем содержимое вложения
+#
+#                 if filename_raw and payload:
+#                     filename = decode_filename(filename_raw)
+#                     # Добавляем кортеж (имя файла, содержимое) в список вложений
+#                     attachments.append((filename, payload))
+#
+#             # Вложенное письмо (message/rfc822)
+#             elif content_type == "message/rfc822":
+#                 # Вложенное письмо может быть вложено в виде списка
+#                 nested_payload = part.get_payload()
+#                 if isinstance(nested_payload, list):
+#                     for sub_msg in nested_payload:
+#                         extract(sub_msg)
+#                 elif isinstance(nested_payload, Message):
+#                     extract(nested_payload)
+#
+#     extract(email_message)
+#     attachments.sort(key=lambda x: x[0])
+#     return attachments
+
+
 def send_email(
         email_text: str,
         recipient_emails: str | Sequence[str],

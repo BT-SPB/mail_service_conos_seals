@@ -233,9 +233,9 @@ def send_production_data(
 #     data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf_one_cont.json")
 #     # data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf_one_cont.json")
 #     data_json = remap_production_data_for_1c(data_json)
-#     write_json(r"C:\Users\Cherdantsev\Desktop\test\test.json", data_json)
+#     # write_json(r"C:\Users\Cherdantsev\Desktop\test\test.json", data_json)
 #     send_production_data(data_json)
-#     # print(data_json)
+#     print(data_json)
 #
 #     # data_json = read_json(
 #     #     r"C:\Users\Cherdantsev\Desktop\250528_173535_aby@sdrzbt.ru\_КС_AKKSUS25060413SRV.pdf.json"

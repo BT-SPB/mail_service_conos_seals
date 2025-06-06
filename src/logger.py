@@ -29,7 +29,7 @@ class Logger(logging.Logger):
             log_dir: Path | str,
             log_name: str,
             max_log_size: int = 10 * 1024 * 1024,
-            backup_count: int = 10,
+            backup_count: int = 20,
             main_file_level: int = logging.INFO,
             console_level: int = logging.INFO,
             enable_detailed_logging: bool = True,
