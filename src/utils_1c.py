@@ -227,15 +227,15 @@ def send_production_data(
     return False
 
 # if __name__ == "__main__":
-#     from src.utils import read_json, write_json
-#     from src.utils_data_process import remap_production_data_for_1c
-#
-#     data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf_one_cont.json")
+#     # from src.utils import read_json, write_json
+#     # from src.utils_data_process import remap_production_data_for_1c
+#     #
 #     # data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf_one_cont.json")
-#     data_json = remap_production_data_for_1c(data_json)
-#     # write_json(r"C:\Users\Cherdantsev\Desktop\test\test.json", data_json)
-#     send_production_data(data_json)
-#     print(data_json)
+#     # # data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf_one_cont.json")
+#     # data_json = remap_production_data_for_1c(data_json)
+#     # # write_json(r"C:\Users\Cherdantsev\Desktop\test\test.json", data_json)
+#     # send_production_data(data_json)
+#     # print(data_json)
 #
 #     # data_json = read_json(
 #     #     r"C:\Users\Cherdantsev\Desktop\250528_173535_aby@sdrzbt.ru\_КС_AKKSUS25060413SRV.pdf.json"
@@ -244,8 +244,9 @@ def send_production_data(
 #     # write_json(r"C:\Users\Cherdantsev\Desktop\250528_173535_aby@sdrzbt.ru\КС_AKKSUS25060413SRV.pdf.json",
 #     #            data_json)
 #
-#     # func = r'TransactionNumberFromBillOfLading'
-#     # arg = r'AKKSUS25060412'
+#     func = r'TransactionNumberFromBillOfLading'
+#     arg = r'MDTRLS2506086'
+#     print(cup_http_request(func, arg))
 #     # for i in range(2):
 #     #     tn = cup_http_request(func, arg)
 #     # print(tn)

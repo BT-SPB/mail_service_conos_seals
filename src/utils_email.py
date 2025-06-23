@@ -289,7 +289,7 @@ def send_email(
         msg['Subject'] = subject
 
         # Установка соединения с SMTP-сервером с использованием контекстного менеджера
-        with smtplib.SMTP(smtp_server, smtp_port, timeout=10) as server:
+        with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as server:
             server.starttls()  # Включение TLS-шифрования
             server.login(email_user, email_pass)  # Аутентификация
             server.send_message(msg, from_addr=email_user, to_addrs=recipients)  # Отправка письма
