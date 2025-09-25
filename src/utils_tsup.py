@@ -1,12 +1,14 @@
 import base64
+import logging
 from typing import Callable
 from functools import wraps
 
 import requests
 from requests.auth import HTTPBasicAuth
 
-from config import CONFIG
-from src.logger import logger
+from config import config
+
+logger = logging.getLogger(__name__)
 
 KAPPA_URL = "http://kappa5.group.ru:81/ca/hs/interaction/"
 LOCAL_URL = "http://10.10.0.10:81/ca/hs/interaction/"
@@ -53,13 +55,13 @@ def cache_http_requests(func: Callable) -> Callable:
 
 
 @cache_http_requests
-def cup_http_request(
+def tsup_http_request(
         function: str,
         *args: str,
         kappa: bool = False,
         encode: bool = True,
-        user_1c: str = CONFIG.USER_1C,
-        password_1c: str = CONFIG.PASSWORD_1C,
+        user_1c: str = config.user_1c,
+        password_1c: str = config.password_1c,
 ) -> list | dict | None:
     """
     Выполняет GET-запрос к серверу 1С и возвращает результат в формате JSON.
@@ -125,8 +127,8 @@ def cup_http_request(
 def send_production_data(
         data: dict[str, any],
         kappa: bool = False,
-        user_1c: str = CONFIG.USER_1C,
-        password_1c: str = CONFIG.PASSWORD_1C,
+        user_1c: str = config.user_1c,
+        password_1c: str = config.password_1c,
 ) -> bool:
     """
     Отправляет производственные данные (в формате JSON) на сервер 1С с авторизацией.
@@ -230,11 +232,11 @@ def send_production_data(
 #     # from src.utils import read_json, write_json
 #     # from src.utils_data_process import remap_production_data_for_1c
 #     #
-#     # data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf_one_cont.json")
+#     # data_json = read_json(r"C:\Users\Cherdantsev\Documents\data\OCR_CONOS_FILES\ДУ_EGML001367.pdf_one_cont.json")
 #     # # data_json = read_json(r"C:\Users\Cherdantsev\Documents\develop\OCR_CONOS_FILES\ДУ_EGML001367.pdf_one_cont.json")
 #     # data_json = remap_production_data_for_1c(data_json)
 #     # # write_json(r"C:\Users\Cherdantsev\Desktop\test\test.json", data_json)
-#     # send_production_data(data_json)
+#     # print("Статус отправки:", send_production_data(data_json))
 #     # print(data_json)
 #
 #     # data_json = read_json(
@@ -244,9 +246,9 @@ def send_production_data(
 #     # write_json(r"C:\Users\Cherdantsev\Desktop\250528_173535_aby@sdrzbt.ru\КС_AKKSUS25060413SRV.pdf.json",
 #     #            data_json)
 #
-#     func = r'TransactionNumberFromBillOfLading'
-#     arg = r'MDTRLS2506086'
-#     print(cup_http_request(func, arg))
+#     # func = r'TransactionNumberFromBillOfLading'
+#     # arg = r'MDTRLS2506086'
+#     # print(cup_http_request(func, arg))
 #     # for i in range(2):
 #     #     tn = cup_http_request(func, arg)
 #     # print(tn)

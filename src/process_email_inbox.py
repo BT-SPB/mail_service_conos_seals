@@ -1,6 +1,7 @@
 import email
 # import imaplib
 import time
+import logging
 from pathlib import Path
 from email.message import Message
 from email.utils import parseaddr
@@ -8,8 +9,7 @@ import ssl
 
 from imapclient import IMAPClient, exceptions
 
-from config import CONFIG
-from src.logger import logger
+from config import config
 from src.utils import write_json, sanitize_pathname
 from src.utils_email import (
     convert_email_date_to_moscow,
@@ -17,6 +17,8 @@ from src.utils_email import (
     extract_text_content,
     extract_attachments,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class EmailMonitor:
@@ -183,7 +185,7 @@ class EmailMonitor:
                     # Формирование уникального имени папки на основе даты и времени отправки письма
                     date_time = convert_email_date_to_moscow(metadata["date"], "%y%m%d_%H%M%S")
                     folder_path = sanitize_pathname(
-                        CONFIG.IN_FOLDER,
+                        config.IN_FOLDER,
                         f"{date_time}_{metadata['sender']}",
                         is_file=False
                     )
@@ -195,8 +197,8 @@ class EmailMonitor:
                     # Последовательная обработка каждого вложения
                     for file_name, content in attachments:
                         file_ext = Path(file_name).suffix.lower()
-                        if file_ext not in CONFIG.valid_ext:
-                            valid_ext_text = ", ".join(f"'*{ext}'" for ext in CONFIG.valid_ext)
+                        if file_ext not in config.valid_ext:
+                            valid_ext_text = ", ".join(f"'*{ext}'" for ext in config.valid_ext)
                             warning_message = (
                                 f"Неподдерживаемое расширение. Допустимые: {valid_ext_text}."
                             )

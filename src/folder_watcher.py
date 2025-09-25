@@ -1,11 +1,12 @@
 import time
+import logging
 from pathlib import Path
 from typing import Callable
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from src.logger import logger
+logger = logging.getLogger(__name__)
 
 
 class FolderWatcher(FileSystemEventHandler):
@@ -22,7 +23,7 @@ class FolderWatcher(FileSystemEventHandler):
             self,
             folder_path: str | Path,
             callback: Callable[[], None],
-            forced_timeout: float | int = 300,
+            forced_timeout: float | int = 600,
             event_delay: float | int = 3
     ):
         """Инициализация наблюдателя за папкой.

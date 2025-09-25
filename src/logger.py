@@ -1,145 +1,210 @@
+import html
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
-class Logger(logging.Logger):
-    """Логгер с поддержкой ротации файлов, двух логов и вывода в консоль.
+from config import config
 
-    Этот класс расширяет стандартный logging.Logger, добавляя поддержку ротации
-    лог-файлов, записи основного лога и опционального подробного лога (DEBUG и выше),
-    а также вывода сообщений в консоль. Основной лог хранится в указанной директории,
-    подробный — в подпапке 'detailed', если включен и основной лог не на уровне DEBUG.
-    Логи записываются в файл с указанным максимальным размером, а при превышении
-    размера создаются резервные копии.
+
+class TelegramHandler(logging.Handler):
+    """
+    Лог-хендлер, отправляющий записи в Telegram через Bot API.
+
+    Реализация ориентирована на:
+    - Повторное использование TCP-соединений через requests.Session и HTTPAdapter.
+    - Умные ретраи для временных ошибок (HTTP 429/5xx).
+    - Экранирование HTML и безопасное усечение сообщения до допустимого лимита Telegram.
+    - Защиту от ошибок логирования (чтобы ошибки отправки не вызывали рекурсивное логирование).
+
+    Args:
+        token (str | None): Telegram bot token. Обычно берётся из config.tg_alert_token.
+        chat_id (str | None): ID чата/канала для отправки (config.tg_alert_chat_id).
+        project_name (str | None): Краткое имя проекта (используется в заголовке сообщения).
+        level (int): Уровень логирования для хендлера (по умолчанию logging.WARNING).
+        timeout (float | tuple[float, float] | None): Таймаут для requests.post (connect, read) или float.
+        max_retries (int): Количество автоматических попыток при временных ошибках.
+        backoff_factor (float): Backoff factor для Retry.
+    Returns:
+        None
+    """
+    TELEGRAM_MESSAGE_LIMIT = 4096  # жёсткий лимит Telegram по символам
+
+    def __init__(
+            self,
+            token: str | None = config.tg_alert_token,
+            chat_id: str | None = config.tg_alert_chat_id,
+            project_name: str | None = config.project_name,
+            level: int = logging.WARNING,
+            timeout: float | tuple[float, float] | None = (5.0, 10.0),
+            max_retries: int = 2,
+            backoff_factor: float = 0.3,
+    ) -> None:
+        super().__init__(level)
+
+        # Конфигурация базовых параметров
+        self.token: str | None = token or None
+        self.chat_id: str | None = str(chat_id) if chat_id else None
+        self.project_name: str = project_name or "project"
+        self.timeout = timeout
+
+        # Если нет токена или chat_id — отключаем отправку, чтобы не ломать приложение.
+        if not self.token or not self.chat_id:
+            # Конфигурация отсутствует — хендлер остаётся работоспособным, но не отправляет сообщения.
+            self._session = None
+            return
+
+        # Формируем URL один раз
+        self._url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+
+        # Создаём сессию для повторного использования соединений (меньше накладных расходов)
+        session = requests.Session()
+        # Настраиваем стратегию ретраев: реагируем на 429/5xx ошибки.
+        retry_strategy = Retry(
+            total=max_retries,
+            backoff_factor=backoff_factor,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=frozenset({"POST"}),
+        )
+
+        adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=10, pool_maxsize=10)
+        session.mount("https://", adapter)
+        # Заголовки помогут в отладки и идентификации запросов на стороне API
+        session.headers.update(
+            {
+                "Content-Type": "application/json",
+                "User-Agent": f"telegram-logger/{self.project_name}",
+            }
+        )
+
+        self._session: requests.Session = session
+
+    @staticmethod
+    def format_message(header: str, text: str) -> str:
+        return (
+            f"<b>#{header}</b>\n"
+            f"<pre>{text}</pre>"
+        )
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """
+        Отправляет форматированную запись лога в Telegram.
+
+        Args:
+            record (logging.LogRecord): Объект записи лога, который нужно отправить.
+
+        Returns:
+            None
+        """
+        # Если хендлер отключён (нет конфигурации) — ничего не делаем.
+        if not self._session:
+            return
+
+        try:
+            # Получаем уже отформатированную строку (используется стандартный Formatter)
+            log_entry = self.format(record)
+
+            # Экранируем project_name для HTML
+            esc_project = html.escape(self.project_name)
+            esc_log = html.escape(log_entry)
+
+            # Подстраховка: рассчитываем запас на HTML-теги и дополнительные данные
+            estimated_overhead = len(self.format_message(esc_project, "")) + 64
+            max_payload_chars = max(0, self.TELEGRAM_MESSAGE_LIMIT - estimated_overhead)
+
+            payload = {
+                "chat_id": self.chat_id,
+                "text": self.format_message(esc_project, esc_log[:max_payload_chars]),
+                "parse_mode": "HTML",
+            }
+
+            # Выполняем POST-запрос через сессию (таймаут задаётся при инициализации).
+            response = self._session.post(self._url, json=payload, timeout=self.timeout)
+            # Если ответ HTTP-кодом не 2xx — будет возбуждено исключение.
+            response.raise_for_status()
+
+        except Exception:
+            # В случае любой ошибки используем стандартный механизм обработки ошибок Handler,
+            # чтобы избежать рекурсивного логирования (например, логирование ошибки
+            # отправки не должно снова вызывать TelegramHandler).
+            # handleError распечатает стек в stderr, если logging.raiseExceptions == True,
+            # и при этом не будет пытаться логировать через getLogger -> избегаем рекурсии.
+            self.handleError(record)
+
+    def close(self) -> None:
+        """
+        Закрывает сессию и вызывает close() базового класса.
+        """
+        try:
+            if getattr(self, "_session", None):
+                try:
+                    self._session.close()
+                except Exception:
+                    pass  # Ошибки при закрытии сессии игнорируем
+        finally:
+            super().close()
+
+
+def setup_logging(
+        log_dir: Path | str,
+        log_name: str,
+        max_log_size: int = 10 * 1024 * 1024,  # 10 mb
+        backup_count: int = 20,
+        file_level: int = logging.INFO,
+        console_level: int = logging.INFO,
+        enable_telegram_notification: bool = config.enable_tg_alert_notification,
+):
+    """Настройка логгирования для всего проекта.
 
     Args:
         log_dir: Путь к директории для логов (строка или объект Path)
         log_name: Имя файла логов (без расширения)
-        max_log_size: Максимальный размер файла логов в байтах (по умолчанию 10MB)
-        backup_count: Количество резервных копий лог-файлов (по умолчанию 10)
-        main_file_level: Уровень логирования для основного файла (по умолчанию INFO)
-        console_level: Уровень логирования для консоли (по умолчанию INFO)
-        enable_detailed_logging: Флаг для включения подробного лога (по умолчанию True)
-        detailed_dir_name: Имя подпапки для подробного лога (по умолчанию 'detailed')
+        max_log_size: Максимальный размер файла логов в байтах
+        backup_count: Количество резервных копий лог-файлов
+        file_level: Уровень логирования для основного файла
+        console_level: Уровень логирования для консоли
+        enable_telegram_notification: Включение уведомлений в Telegram.
     """
+    # Форматтер для унифицированного вывода логов.
+    formatter = logging.Formatter(
+        fmt="[{asctime}] {levelname:8} {name}:{lineno} | {message}",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        style="{"
+    )
 
-    def __init__(
-            self,
-            log_dir: Path | str,
-            log_name: str,
-            max_log_size: int = 10 * 1024 * 1024,
-            backup_count: int = 20,
-            main_file_level: int = logging.INFO,
-            console_level: int = logging.INFO,
-            enable_detailed_logging: bool = True,
-            detailed_dir_name: str = "detailed",
-    ) -> None:
-        """Инициализирует логгер с ротацией файлов и выводом в консоль."""
-        super().__init__(__name__)
+    root_logger = logging.getLogger()
+    # Установка минимального уровня для root-логгера.
+    root_logger.setLevel(min(file_level, console_level))
 
-        # Проверка корректности входных параметров
-        self._validate_log_level(main_file_level)
-        self._validate_log_level(console_level)
+    # Очистка существующих хендлеров для избежания дубликатов.
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
 
-        # Преобразуем путь в объект Path
-        log_dir = Path(log_dir)
-        # Создаем основную директорию, если она не существует
-        log_dir.parent.mkdir(parents=True, exist_ok=True)
+    # Настройка консольного хендлера.
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(console_level)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
 
-        # Настраиваем формат сообщений
-        log_format = '%(asctime)s [%(levelname)7s] - %(message)s'
-        date_format = '%Y-%m-%d %H:%M:%S'
-        formatter = logging.Formatter(log_format, datefmt=date_format)
+    # Создание директории и настройка ротационного файлового хендлера.
+    log_dir = Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"{log_name}.log"
+    file_handler = RotatingFileHandler(
+        filename=log_file,
+        maxBytes=max_log_size,
+        backupCount=backup_count,
+        encoding="utf-8"
+    )
+    file_handler.setLevel(file_level)
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
 
-        # Настраиваем обработчик для вывода логов в консоль
-        self.console_handler = logging.StreamHandler()
-        self.console_handler.setLevel(console_level)
-        self.console_handler.setFormatter(formatter)
-        self.addHandler(self.console_handler)
-
-        # Настраиваем обработчик для основного лога
-        main_log_file = log_dir / f"{log_name}.log"
-        self.main_file_handler = RotatingFileHandler(
-            filename=main_log_file,
-            maxBytes=max_log_size,
-            backupCount=backup_count,
-            encoding="utf-8"
-        )
-        self.main_file_handler.setLevel(main_file_level)
-        self.main_file_handler.setFormatter(formatter)
-        self.addHandler(self.main_file_handler)
-
-        # Настраиваем обработчик для подробного лога, если:
-        # 1. Включен флаг enable_detailed_logging
-        # 2. Уровень основного лога выше DEBUG
-        if enable_detailed_logging and main_file_level > logging.DEBUG:
-            detailed_dir = log_dir / detailed_dir_name
-            detailed_dir.mkdir(parents=True, exist_ok=True)
-            detailed_log_file = detailed_dir / f"{log_name}.log"
-            self.detailed_file_handler = RotatingFileHandler(
-                filename=detailed_log_file,
-                maxBytes=max_log_size,
-                backupCount=backup_count,
-                encoding="utf-8"
-            )
-            self.detailed_file_handler.setLevel(logging.DEBUG)
-            self.detailed_file_handler.setFormatter(formatter)
-            self.addHandler(self.detailed_file_handler)
-
-    def print(self, message: str) -> None:
-        """Записывает информационное сообщение в лог.
-
-        Args:
-            message (str): Сообщение для логирования.
-        """
-        self.info(message)
-
-    @staticmethod
-    def _validate_log_level(level: int) -> None:
-        """Проверяет корректность уровня логирования."""
-        valid_levels = {
-            logging.DEBUG, logging.INFO, logging.WARNING,
-            logging.ERROR, logging.CRITICAL
-        }
-        if level not in valid_levels:
-            raise ValueError(
-                f"Уровень логирования должен быть одним из: "
-                f"DEBUG ({logging.DEBUG}), INFO ({logging.INFO}), "
-                f"WARNING ({logging.WARNING}), ERROR ({logging.ERROR}), "
-                f"CRITICAL ({logging.CRITICAL}). "
-                f"Передано неверное значение: {level}."
-            )
-
-
-# Глобальная переменная для хранения экземпляра логгера
-logger: Logger | None = None
-
-
-def init_logger(*args, **kwargs) -> None:
-    """Инициализирует глобальный логгер.
-
-    Создаёт экземпляр класса Logger и присваивает его глобальной переменной logger.
-    Должна вызываться только один раз из config.py после определения пути для логов.
-    Передаёт log_file и дополнительные параметры в конструктор Logger.
-    """
-    global logger
-    if logger is None:
-        logger = Logger(*args, **kwargs)
-
-
-def get_logger() -> Logger:
-    """Получает инициализированный глобальный логгер.
-
-    Используется только в config.py для безопасного доступа к логгеру.
-    В других модулях следует использовать прямой импорт logger.
-
-    Returns:
-        Logger: Инициализированный экземпляр логгера.
-
-    Raises:
-        RuntimeError: Если логгер не был инициализирован.
-    """
-    if logger is None:
-        raise RuntimeError("Логгер не инициализирован. Сначала вызовите init_logger().")
-    return logger
+    # Добавление Telegram-хендлера, если включено.
+    if enable_telegram_notification:
+        tg_handler = TelegramHandler()
+        tg_handler.setFormatter(formatter)
+        root_logger.addHandler(tg_handler)

@@ -1,6 +1,7 @@
 import smtplib
 import chardet
-from typing import Literal, List, Optional, Tuple, Union
+import logging
+from typing import Literal
 from collections.abc import Sequence
 from zoneinfo import ZoneInfo
 
@@ -9,8 +10,8 @@ from email.header import decode_header
 from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
 
-from config import CONFIG
-from src.logger import logger
+from config import config
+logger = logging.getLogger(__name__)
 
 
 def convert_email_date_to_moscow(
@@ -62,11 +63,11 @@ def detect_encoding(body: bytes) -> str:
     return 'utf-8'
 
 
-def decode_subject(subject: Optional[str]) -> str:
+def decode_subject(subject: str | None) -> str:
     """Декодирует тему письма из закодированного формата"""
     if not subject:
         return "(Без темы)"
-    decoded: List[Tuple[Union[bytes, str], Optional[str]]] = decode_header(subject)
+    decoded: list[tuple[bytes | str, str | None]] = decode_header(subject)
     subject_text: str = ""
     for text, encoding in decoded:
         if isinstance(text, bytes):
@@ -84,7 +85,7 @@ def extract_text_content(email_message: Message) -> str | None:
         email_message: Объект email-сообщения для обработки.
 
     Returns:
-        Optional[str]: Текстовая часть письма или None, если текст не найден.
+        str | None: Текстовая часть письма или None, если текст не найден.
     """
     # Проверяем, является ли сообщение многосоставным (multipart): текст + HTML + вложения + ...
     if email_message.is_multipart():
@@ -115,7 +116,7 @@ def extract_html_content(email_message: Message) -> str | None:
         email_message: Объект email-сообщения для обработки.
 
     Returns:
-        Optional[str]: HTML-часть письма или None, если HTML не найден.
+        str | None: HTML-часть письма или None, если HTML не найден.
     """
     # Инициализируем переменную для хранения HTML-контента
     html_content: bytes | None = None
@@ -279,8 +280,8 @@ def send_email(
         )
 
     # Проверка настройки блокировки отправки
-    if CONFIG.block_email_sending:
-        logger.info(format_email_log(f"📧 Отправка email ЗАБЛОКИРОВАНА настройкой 'block_email_sending'"))
+    if not config.enable_email_notification:
+        logger.info(format_email_log(f"📧 Отправка email ЗАБЛОКИРОВАНА настройкой 'enable_email_notification'"))
         return
 
     try:

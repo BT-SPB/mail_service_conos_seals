@@ -1,9 +1,9 @@
 import shutil
+import logging
 from pathlib import Path
 from collections import defaultdict
 
-from config import CONFIG
-from src.logger import logger
+from config import config
 from src.utils import (
     read_json,
     write_json,
@@ -11,7 +11,7 @@ from src.utils import (
     sanitize_pathname,
     is_directory_empty,
 )
-from src.utils_1c import cup_http_request, send_production_data
+from src.utils_tsup import tsup_http_request, send_production_data
 from src.utils_email import send_email
 from src.utils_data_process import (
     update_json,
@@ -19,6 +19,8 @@ from src.utils_data_process import (
     format_email_message,
     remap_production_data_for_1c,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def process_output_ocr(
@@ -45,7 +47,7 @@ def process_output_ocr(
     """
     # Получаем список директорий, содержащих файл metadata.json
     folders_for_processing: list[Path] = [
-        folder for folder in CONFIG.OUT_OCR_FOLDER.iterdir()
+        folder for folder in config.OUT_OCR_FOLDER.iterdir()
         if folder.is_dir() and (folder / "metadata.json").is_file()
     ]
 
@@ -64,8 +66,8 @@ def process_output_ocr(
             metadata: dict[str, any] = read_json(metadata_file)
 
             # Формируем пути для папок ошибок и успешной обработки с безопасными именами
-            error_folder = sanitize_pathname(CONFIG.ERROR_FOLDER, folder.name, is_file=False)
-            success_folder = sanitize_pathname(CONFIG.SUCCESS_FOLDER, folder.name, is_file=False)
+            error_folder = sanitize_pathname(config.ERROR_FOLDER, folder.name, is_file=False)
+            success_folder = sanitize_pathname(config.SUCCESS_FOLDER, folder.name, is_file=False)
 
             container_notes: list[str] = []
 
@@ -185,14 +187,14 @@ def process_output_ocr(
 
                 # Запрашиваем номер транзакции из ЦУП по коносаменту
                 # Пример получаемого значения: ["АА-0095444 от 14.04.2025"]
-                transaction_numbers: list[str] = cup_http_request(
+                transaction_numbers: list[str] = tsup_http_request(
                     "TransactionNumberFromBillOfLading", json_data["bill_of_lading"]
                 )
 
                 # Если транзакции не найдены и коносамент заканчивается на `SRV`, пробуем без суффикса
                 if not transaction_numbers and json_data["bill_of_lading"].endswith("SRV"):
                     bill_of_lading = json_data["bill_of_lading"].removesuffix("SRV")
-                    transaction_numbers: list[str] = cup_http_request(
+                    transaction_numbers: list[str] = tsup_http_request(
                         "TransactionNumberFromBillOfLading", bill_of_lading
                     )
                     json_data["bill_of_lading"] = bill_of_lading
@@ -220,7 +222,7 @@ def process_output_ocr(
                 # Запрашиваем номера контейнеров по каждому номеру транзакции
                 container_numbers_cup: list[list[str]] = [
                     # Очищаем полученные номера от лишних пробелов
-                    [number.strip() for number in cup_http_request(
+                    [number.strip() for number in tsup_http_request(
                         "GetTransportPositionNumberByTransactionNumber",
                         # Извлекаем только номер, отсекая дату (например, "АА-0095444 от 14.04.2025" → "АА-0095444"
                         transaction_number.split()[0],
@@ -285,7 +287,7 @@ def process_output_ocr(
                 write_json(json_file_1c, json_data_1c)
 
                 # Отправляем данные в ЦУП, если включена настройка
-                if CONFIG.enable_send_production_data:
+                if config.enable_send_production_data:
                     # Отправляем данные в ЦУП. Функция возвращает флаг успешности отправки
                     is_send_production_data = send_production_data(json_data_1c)
                     # Если не удалось отправить данные
@@ -346,7 +348,7 @@ def process_output_ocr(
                 send_email(
                     email_text=email_text,
                     # recipient_emails=metadata["sender"],
-                    recipient_emails=CONFIG.notification_emails,
+                    recipient_emails=config.notification_emails,
                     subject=subject,
                     email_user=email_user,
                     email_pass=email_pass,

@@ -3,10 +3,11 @@ import json
 import base64
 import binascii
 import shutil
+import logging
 from pathlib import Path
 from typing import Iterable, Literal
 
-from src.logger import logger
+logger = logging.getLogger(__name__)
 
 
 # --- READERS AND WRITERS ---

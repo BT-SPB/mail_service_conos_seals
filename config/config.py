@@ -1,12 +1,9 @@
-import os
 from io import StringIO
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 from cryptography.fernet import Fernet
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from src.logger import init_logger, get_logger
 
 
 class Config(BaseSettings):
@@ -28,23 +25,25 @@ class Config(BaseSettings):
         SUCCESS_FOLDER (Path | None): Папка для успешно обработанных файлов
         ERROR_FOLDER (Path | None): Папка для файлов с ошибками
         LOG_FOLDER (Path | None): Папка для хранения логов
-        EMAIL_ADDRESS (str | None): Email-адрес для приема сообщений и отправки уведомлений
-        EMAIL_PASSWORD (str | None): Пароль для email-аккаунта
-        USER_1C (str | None): Имя пользователя для системы 1C
-        PASSWORD_1C (str | None): Пароль для системы 1C
+        email_address (str | None): Email-адрес для приема сообщений и отправки уведомлений
+        email_password (str | None): Пароль для email-аккаунта
+        user_1c (str | None): Имя пользователя для системы 1C
+        password_1c (str | None): Пароль для системы 1C
         imap_server (str): Адрес IMAP-сервера
         imap_port (int): Порт IMAP-сервера
         smtp_server (str): Адрес SMTP-сервера
         smtp_port (int): Порт SMTP-сервера
         notification_emails (list[str]): Список email-адресов для уведомлений
-        block_email_sending (bool): # Флаг для блокировки отправки ЛЮБЫХ email-уведомлений
+        enable_email_notification (bool): # Флаг для блокировки отправки ЛЮБЫХ email-уведомлений
         enable_success_notifications (bool): Флаг отправки уведомлений об успешной обработке
         enable_send_production_data (bool): Флаг для включения отправки номеров пломб и файлов коносаментов в ЦУП
         valid_images (set[str]): Допустимые расширения файлов изображений
         valid_ext (set[str]): Допустимые расширения всех файлов (включая PDF)
     """
     # Путь к директории конфигурации, вычисляется как родительская директория текущего файла
-    CONFIG_DIR: Path = Path(__file__).resolve().parent
+    CONFIG_DIR: Path = Path(__file__).parent
+    # Абсолютный путь к корню проекта
+    PROJECT_DIR: Path = CONFIG_DIR.parent
 
     # Загрузка переменных окружения из файла config.env
     model_config = SettingsConfigDict(
@@ -54,7 +53,9 @@ class Config(BaseSettings):
     )
 
     # Путь к рабочей директории, по умолчанию - корень проекта
-    WORK_DIR: Path = Path(__file__).resolve().parent.parent
+    WORK_DIR: Path = PROJECT_DIR / "FILES"
+
+    project_name: str = PROJECT_DIR.name
 
     # Пути к рабочим директориям, инициализируются как None
     IN_FOLDER: Path | None = None
@@ -64,10 +65,10 @@ class Config(BaseSettings):
     LOG_FOLDER: Path | None = None
 
     # Учетные данные для email и 1C
-    EMAIL_ADDRESS: str | None = None
-    EMAIL_PASSWORD: str | None = None
-    USER_1C: str | None = None
-    PASSWORD_1C: str | None = None
+    email_address: str | None = None
+    email_password: str | None = None
+    user_1c: str | None = None
+    password_1c: str | None = None
 
     # Настройки почтовых серверов
     imap_server: str = "imap.gmail.com"
@@ -82,8 +83,8 @@ class Config(BaseSettings):
         "aby@sdrzbt.ru",  # Быстрова Арина
     ]
 
-    # Флаг для блокировки отправки ЛЮБЫХ email-уведомлений
-    block_email_sending: bool = False
+    # Глобальный флаг для включения отправки email-уведомлений
+    enable_email_notification: bool = True
 
     # Флаг для включения уведомлений об успешной обработке
     # True - уведомления отправляются при успехе и ошибках
@@ -97,20 +98,9 @@ class Config(BaseSettings):
     valid_images: set = {".png", ".jpg", ".jpeg"}
     valid_ext: set = valid_images | {".pdf"}
 
-    def setup_directories(self) -> None:
-        """Создает необходимые директории, если они отсутствуют. """
-        # Список директорий для создания
-        directories = [
-            self.IN_FOLDER,
-            self.OUT_OCR_FOLDER,
-            self.SUCCESS_FOLDER,
-            self.ERROR_FOLDER,
-            self.LOG_FOLDER
-        ]
-
-        for directory in directories:
-            if directory:
-                directory.mkdir(parents=True, exist_ok=True)
+    tg_alert_token: str | None = None
+    tg_alert_chat_id: str | None = None
+    enable_tg_alert_notification: bool = True
 
     def load_encrypted_settings(self) -> None:
         """Загружает и расшифровывает конфиденциальные настройки из зашифрованного файла.
@@ -123,63 +113,62 @@ class Config(BaseSettings):
             Exception: Если произошла ошибка при расшифровке данных.
         """
         key_path = self.CONFIG_DIR / "crypto.key"
-        encrypted_path = self.CONFIG_DIR / "encrypted.env"
+        enc_path = self.CONFIG_DIR / "encrypted.env"
 
         try:
-            # Чтение ключа шифрования
-            with open(key_path, mode="r", encoding="utf-8") as key_file:
-                crypto_key = key_file.read().strip()
-
-            # Инициализация шифровальщика
-            fernet = Fernet(crypto_key)
-
+            # Чтение ключа и инициализация шифровальщика
+            fernet = Fernet(key_path.read_text(encoding="utf-8").strip())
             # Чтение и расшифровка зашифрованного файла
-            with open(encrypted_path, "rb") as encrypted_file:
-                encrypted_data = encrypted_file.read()
-            decrypted_bytes = fernet.decrypt(encrypted_data)
-            decrypted_text = decrypted_bytes.decode("utf-8")
-
-            # Загрузка переменных окружения из расшифрованных данных
-            with StringIO(decrypted_text) as string_stream:
-                load_dotenv(stream=string_stream)
+            decrypted_text = fernet.decrypt(enc_path.read_bytes()).decode("utf-8")
+            # Парсим .env в словарь: {'OPENAI_API_KEY': '...', ...}
+            raw: dict[str, str | None] = dotenv_values(stream=StringIO(decrypted_text))
 
             # Обновление конфигурационных полей
-            self.EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
-            self.EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-            self.USER_1C = os.getenv("USER_1C")
-            self.PASSWORD_1C = os.getenv("PASSWORD_1C")
+            self.email_address = raw.get("EMAIL_ADDRESS")
+            self.email_password = raw.get("EMAIL_PASSWORD")
+            self.user_1c = raw.get("USER_1C")
+            self.password_1c = raw.get("PASSWORD_1C")
+            self.tg_alert_token = raw.get("TG_ALERT_TOKEN")
+            self.tg_alert_chat_id = raw.get("TG_ALERT_CHAT_ID")
 
         except FileNotFoundError as e:
-            get_logger().error(f"Не найден файл: {e}")
+            print(f"Не найден файл: {e}")
         except Exception as e:
-            get_logger().error(f"Ошибка при расшифровке: {e}")
+            print(f"Ошибка при расшифровке: {e}")
 
-    def model_post_init(self, __context) -> None:
-        """Инициализирует конфигурацию после создания экземпляра класса.
+    def dir_init(self) -> None:
+        """Инициализирует рабочие директории.
 
-        Устанавливает пути к рабочим директориям, загружает зашифрованные настройки
-        и создает необходимые директории.
-        Примечание: Этот метод вызывается автоматически после создания экземпляра.
-
-        Args:
-            __context: Контекст инициализации, передаваемый pydantic (не используется).
+        Для каждого поля создаётся папка:
+        - Если путь указан явно — используется он.
+        - Если None — берётся WORK_DIR + вложенные имена.
+        Атрибуты обновляются до конечных путей.
         """
-        # Установка путей к рабочим директориям относительно WORK_DIR
-        workflow_dir = self.WORK_DIR / "WORKFLOW"
+        dir_map: dict[str, tuple[str, ...]] = {
+            "IN_FOLDER": ("WORKFLOW", "IN"),
+            "OUT_OCR_FOLDER": ("WORKFLOW", "OUT_OCR"),
+            "LOG_FOLDER": ("WORKFLOW", "logs"),
+            "SUCCESS_FOLDER": ("WORKFLOW", "SUCCESS"),
+            "ERROR_FOLDER": ("ERROR",),
+        }
 
-        self.IN_FOLDER = workflow_dir / "IN"
-        self.OUT_OCR_FOLDER = workflow_dir / "OUT_OCR"
-        self.SUCCESS_FOLDER = workflow_dir / "SUCCESS"
-        self.ERROR_FOLDER = self.WORK_DIR / "ERROR"
-        self.LOG_FOLDER = workflow_dir / "logs"
+        for attr, names in dir_map.items():
+            current = getattr(self, attr)
+            if current is None:
+                path = self.WORK_DIR.joinpath(*names)
+            else:
+                path = Path(current)
 
-        # Инициализация логгера после инициализации директории для логов
-        init_logger(log_dir=self.LOG_FOLDER, log_name="rates_mail")
+            path.mkdir(parents=True, exist_ok=True)
+            setattr(self, attr, path)
 
-        # Выполнение загрузки зашифрованных настроек и создание директорий
+    def model_post_init(self, context: object = None) -> None:
+        """
+        Метод вызывается автоматически после инициализации модели Pydantic.
+        """
+        # Выполнение загрузки зашифрованных настроек
         self.load_encrypted_settings()
-        self.setup_directories()
-        get_logger().info("✔️ Инициализация конфига завершена")
+        self.dir_init()
 
     def display_config(self) -> str:
         """Формирует строковое представление конфигурации для отображения.
@@ -191,22 +180,25 @@ class Config(BaseSettings):
             str: Строковое представление конфигурации.
         """
         # Формирование заголовка и завершающей линии
-        title = "\n" + "  CONFIG PARAMS  ".center(60, "=")
-        end = "=" * 60
+        title = "⚙️ Config parameters"
+        sep = "─" * 60
 
         # Исключение конфиденциальных полей из вывода
         config_dict = self.model_dump(
-            exclude={"EMAIL_PASSWORD", "PASSWORD_1C"}
+            exclude={
+                "user_1c", "password_1c", "email_password",
+                "tg_alert_token", "tg_alert_chat_id",
+            }
         )
 
         # Формирование списка строк для каждого параметра
         params = [f"{k}: {v}" for k, v in config_dict.items()]
         # Объединение всех частей в итоговую строку
-        return "\n".join([title, *params, end])
+        return "\n".join([title, sep, *params, sep])
 
 
-CONFIG = Config()
+# Создание экземпляра конфига
+config = Config()
 
 if __name__ == "__main__":
-    # print(CONFIG)
-    get_logger().info(CONFIG.display_config())
+    print(config.display_config())

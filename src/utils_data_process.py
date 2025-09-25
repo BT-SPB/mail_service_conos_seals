@@ -2,7 +2,7 @@ import re
 import copy
 from pathlib import Path
 
-from config import CONFIG
+from config import config
 from src.utils import file_to_base64
 from src.utils_email import convert_email_date_to_moscow
 
@@ -274,7 +274,7 @@ def format_email_message(
         has_content = True
 
     # Добавляем информацию об успешных файлах, если включены уведомления и есть успехи
-    if CONFIG.enable_success_notifications and metadata.get("successes"):
+    if config.enable_success_notifications and metadata.get("successes"):
         formatted_successes = formatted_text_from_data(metadata["successes"])
         email_sections.append(
             f"✅ Успешно обработанные файлы (данные загружены в ЦУП):\n"

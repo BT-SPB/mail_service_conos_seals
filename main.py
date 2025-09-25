@@ -1,12 +1,15 @@
 import time
+import logging
 from threading import Thread
 
-from config import CONFIG
-from src.logger import logger
+from config import config
+from src.logger import setup_logging
 from src.process_email_inbox import EmailMonitor
 from src.process_output_ocr import process_output_ocr
 from src.folder_watcher import FolderWatcher
 
+setup_logging(config.LOG_FOLDER, "rates_mail")
+logger = logging.getLogger(__name__)
 
 def main() -> None:
     """
@@ -20,24 +23,24 @@ def main() -> None:
         KeyboardInterrupt: При прерывании пользователем (Ctrl+C).
     """
     # Логируем конфигурацию перед началом работы.
-    logger.info(CONFIG.display_config())
+    logger.info(config.display_config())
 
     # Инициализация EmailMonitor
     email_monitor = EmailMonitor(
-        email_user=CONFIG.EMAIL_ADDRESS,
-        email_pass=CONFIG.EMAIL_PASSWORD,
-        imap_server=CONFIG.imap_server,
-        imap_port=CONFIG.imap_port
+        email_user=config.email_address,
+        email_pass=config.email_password,
+        imap_server=config.imap_server,
+        imap_port=config.imap_port
     )
 
     # Инициализация FolderWatcher с callback для обработки OCR-результатов
     folder_watcher = FolderWatcher(
-        folder_path=CONFIG.OUT_OCR_FOLDER,
+        folder_path=config.OUT_OCR_FOLDER,
         callback=lambda: process_output_ocr(
-            email_user=CONFIG.EMAIL_ADDRESS,
-            email_pass=CONFIG.EMAIL_PASSWORD,
-            smtp_server=CONFIG.smtp_server,
-            smtp_port=CONFIG.smtp_port,
+            email_user=config.email_address,
+            email_pass=config.email_password,
+            smtp_server=config.smtp_server,
+            smtp_port=config.smtp_port,
         )
     )
 
@@ -164,15 +167,15 @@ def test_email_monitor() -> None:
             логируется с последующим завершением.
     """
     # Логируем конфигурацию для отладки и контроля параметров
-    logger.info(CONFIG.display_config())
+    logger.info(config.display_config())
     logger.info("Запущен изолированный мониторинг почты (тестовый режим)")
 
     # Инициализируем EmailMonitor
     email_monitor = EmailMonitor(
-        email_user=CONFIG.EMAIL_ADDRESS,
-        email_pass=CONFIG.EMAIL_PASSWORD,
-        imap_server=CONFIG.imap_server,
-        imap_port=CONFIG.imap_port
+        email_user=config.email_address,
+        email_pass=config.email_password,
+        imap_server=config.imap_server,
+        imap_port=config.imap_port
     )
 
     try:
@@ -208,17 +211,17 @@ def test_folder_monitor() -> None:
             логируется с последующим завершением.
     """
     # Логируем конфигурацию для отладки и контроля параметров
-    logger.info(CONFIG.display_config())
+    logger.info(config.display_config())
     logger.info("Запущен изолированный мониторинг папок (тестовый режим)")
 
     # Создаем наблюдатель с передачей callback-функции для OCR-обработки
     watcher = FolderWatcher(
-        folder_path=CONFIG.OUT_OCR_FOLDER,
+        folder_path=config.OUT_OCR_FOLDER,
         callback=lambda: process_output_ocr(
-            email_user=CONFIG.EMAIL_ADDRESS,
-            email_pass=CONFIG.EMAIL_PASSWORD,
-            smtp_server=CONFIG.smtp_server,
-            smtp_port=CONFIG.smtp_port,
+            email_user=config.email_address,
+            email_pass=config.email_password,
+            smtp_server=config.smtp_server,
+            smtp_port=config.smtp_port,
         )
     )
 
