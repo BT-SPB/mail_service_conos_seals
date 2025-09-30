@@ -19,6 +19,7 @@ from src.utils_data_process import (
     format_email_message,
     remap_production_data_for_1c,
 )
+from src.models.enums import DocType
 
 logger = logging.getLogger(__name__)
 
@@ -157,33 +158,37 @@ def process_output_ocr(
                     transfer_files(files_to_transfer, error_folder, "move")
                     continue
 
-                # Определяем контейнеры с пустыми номерами пломб
-                containers_with_empty_seals = {
-                    cont["container"] for cont in json_data["containers"]
-                    if not cont.get("seals")
-                }
+                document_type: DocType = DocType(json_data.get("document_type", None))
 
-                # Если все контейнеры имеют пустые пломбы
-                if len(containers_with_empty_seals) == len(json_data["containers"]):
-                    error_message = (f"Номера пломб отсутствуют для всех контейнеров: "
-                                     f"{', '.join(containers_with_empty_seals)}.")
-                    logger.warning(f"⚠️ {error_message} ({json_file})")
-                    metadata["errors"][source_file_name].append(error_message)
-                    transfer_files(files_to_transfer, error_folder, "move")
-                    continue
+                # Проверяем наличие пломб, кроме ДУ от теринала НМТП, в котором пломб не предусмотрено
+                if document_type != DocType.DU_NMTP:
+                    # Определяем контейнеры с пустыми номерами пломб
+                    containers_with_empty_seals = {
+                        cont["container"] for cont in json_data["containers"]
+                        if not cont.get("seals")
+                    }
 
-                # Если есть контейнеры с пустыми пломбами, логируем частичную ошибку
-                if containers_with_empty_seals:
-                    error_message = (f"Номера пломб отсутствуют для части контейнеров: "
-                                     f"{', '.join(containers_with_empty_seals)}.")
-                    logger.warning(f"⚠️ {error_message} ({json_file})")
-                    metadata["errors"][source_file_name].append(error_message)
-                    transfer_files(files_to_transfer, error_folder, "copy2")
-                    # Удаляем контейнеры с пустым полем "seals"
-                    json_data["containers"] = [
-                        cont for cont in json_data["containers"]
-                        if cont["container"] not in containers_with_empty_seals
-                    ]
+                    # Если все контейнеры имеют пустые пломбы
+                    if len(containers_with_empty_seals) == len(json_data["containers"]):
+                        error_message = (f"Номера пломб отсутствуют для всех контейнеров: "
+                                         f"{', '.join(containers_with_empty_seals)}.")
+                        logger.warning(f"⚠️ {error_message} ({json_file})")
+                        metadata["errors"][source_file_name].append(error_message)
+                        transfer_files(files_to_transfer, error_folder, "move")
+                        continue
+
+                    # Если есть контейнеры с пустыми пломбами, логируем частичную ошибку
+                    if containers_with_empty_seals:
+                        error_message = (f"Номера пломб отсутствуют для части контейнеров: "
+                                         f"{', '.join(containers_with_empty_seals)}.")
+                        logger.warning(f"⚠️ {error_message} ({json_file})")
+                        metadata["errors"][source_file_name].append(error_message)
+                        transfer_files(files_to_transfer, error_folder, "copy2")
+                        # Удаляем контейнеры с пустым полем "seals"
+                        json_data["containers"] = [
+                            cont for cont in json_data["containers"]
+                            if cont["container"] not in containers_with_empty_seals
+                        ]
 
                 # Запрашиваем номер транзакции из ЦУП по коносаменту
                 # Пример получаемого значения: ["АА-0095444 от 14.04.2025"]
@@ -304,7 +309,7 @@ def process_output_ocr(
                         transfer_files(files_to_transfer, error_folder, "move")
                         continue
                 else:
-                    logger.debug(
+                    logger.info(
                         "🔔 Отправка данных в ЦУП отключена настройкой "
                         "'enable_send_production_data'"
                     )
