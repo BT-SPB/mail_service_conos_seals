@@ -5,14 +5,27 @@ import binascii
 import shutil
 import logging
 from pathlib import Path
-from typing import Iterable, Literal
+from datetime import datetime
+from typing import Iterable, Literal, Any
+
+from dateutil.parser import parse
+
+from config import config
 
 logger = logging.getLogger(__name__)
 
 
+class UniqueList(list):
+    """Список, сохраняющий порядок, но не допускающий дубликаты."""
+
+    def append(self, item):
+        if item not in self:
+            super().append(item)
+
+
 # --- READERS AND WRITERS ---
 
-def write_json(file_path: Path | str, data: any) -> None:
+def write_json(file_path: Path | str, data: Any) -> None:
     """Записывает данные в JSON файл с форматированием.
 
     Args:
@@ -22,6 +35,9 @@ def write_json(file_path: Path | str, data: any) -> None:
     Returns:
         None
     """
+    if not data:
+        return
+
     file_path = Path(file_path)
     file_path.parent.mkdir(parents=True, exist_ok=True)
     with open(file_path, mode="w", encoding="utf-8") as file:
@@ -40,12 +56,43 @@ def read_json(file_path: Path | str) -> dict:
     file_path = Path(file_path)
     try:
         with open(file_path, mode="r", encoding="utf-8") as file:
-            data = json.load(file)
+            # Загружаем содержимое JSON файла
+            return json.load(file)
     except (json.JSONDecodeError, IOError):
-        # Если файл пустой или поврежден, используем пустой словарь
-        data = {}
+        # В случае ошибок декодирования JSON или отсутствия файла
+        # возвращаем пустой словарь как значение по умолчанию
+        return {}
 
-    return data
+
+def write_text(file_path: Path | str, data: str) -> None:
+    """Записывает текстовые данные в файл.
+
+    Args:
+        file_path: Путь к файлу (строка или объект Path)
+        data: Текст для записи
+
+    Returns:
+        None
+    """
+    if not data:
+        return
+
+    file_path = Path(file_path)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text(data, encoding="utf-8")
+
+
+def read_text(file_path: Path | str) -> str:
+    """Читает текстовое содержимое из файла.
+
+    Args:
+        file_path: Путь к файлу (строка или объект Path)
+
+    Returns:
+        str: Содержимое файла в виде строки
+    """
+    file_path = Path(file_path)
+    return file_path.read_text(encoding="utf-8")
 
 
 # --- CODERS ---
@@ -91,7 +138,7 @@ def base64_to_file(base64_string: str, output_path: str | Path) -> None:
         file_data = base64.b64decode(base64_string)
 
         # Записываем байты в файл
-        with open(output_path, 'wb') as file:
+        with open(output_path, "wb") as file:
             file.write(file_data)
 
     except (ValueError, binascii.Error) as e:
@@ -189,7 +236,8 @@ def sanitize_pathname(
 def transfer_files(
         file_paths: Iterable[str | Path] | str | Path,
         destination_folder: str | Path,
-        operation: Literal["copy2", "copy", "move"] = "copy2"
+        operation: Literal["copy2", "copy", "move"] = "copy2",
+        block_transfer: bool = config.block_processed_files_to_output,
 ) -> None:
     """
     Перемещает или копирует файлы из указанной коллекции путей в папку назначения.
@@ -198,7 +246,11 @@ def transfer_files(
         file_paths: Коллекция путей к файлам (список, кортеж, генератор и т.д.) или одиночный путь
         destination_folder: Путь к папке назначения
         operation: Операция для выполнения: "copy2" (по умолчанию), "copy", "move"
+        block_transfer: флаг для принудительной блокировки всех операций
     """
+    if block_transfer:
+        return None
+
     # Проверяем, является ли file_paths одиночным путем (str или Path)
     if isinstance(file_paths, (str, Path)):
         file_paths = [file_paths]  # Оборачиваем в список
@@ -260,3 +312,84 @@ def is_directory_empty(path: Path | str) -> bool:
         return False
     except StopIteration:
         return True
+
+
+def parse_datetime(date_string: str) -> datetime | None:
+    """
+    Парсит строку с датой и временем в объект datetime.
+
+    Функция принимает строку с датой и временем в произвольном формате и пытается преобразовать
+    её в объект datetime, используя dateutil.parser с приоритетом дня (формат ДД.ММ.ГГГГ).
+    Если строка пустая или парсинг не удался, возвращается None.
+
+    Args:
+        date_string: Строка, содержащая дату и время в произвольном формате.
+
+    Returns:
+        datetime | None: Объект datetime, если парсинг успешен, иначе None.
+    """
+    # Проверка на пустую строку или строку, содержащую только пробелы
+    if not date_string.strip():
+        return None
+
+    try:
+        # Парсинг строки в объект datetime с приоритетом дня
+        return parse(date_string, dayfirst=True)
+    except Exception as e:
+        # Логирование ошибки с указанием проблемной строки и причины
+        logger.exception("Ошибка парсинга строки '%s' в дату: %s", date_string, e)
+        return None
+
+
+def parse_and_format_datetime(
+        date_string: str,
+        output_format: str = "%d.%m.%Y %H:%M:%S",
+) -> str:
+    """
+    Форматирует строку с датой и временем в заданный формат.
+
+    Функция принимает строку с датой и временем в произвольном формате, преобразует её
+    в объект datetime с помощью функции parse_datetime, а затем возвращает строку,
+    отформатированную в указанном формате. При ошибке парсинга или пустой строке
+    возвращается пустая строка.
+
+    Args:
+        date_string: Строка, содержащая дату и время в произвольном формате.
+        output_format: Формат для возвращаемой строки (по умолчанию: "%d.%m.%Y %H:%M:%S").
+
+    Returns:
+        str: Отформатированная строка с датой и временем или пустая строка при ошибке.
+    """
+    # Проверка на пустую строку для предотвращения лишних операций
+    if not date_string.strip():
+        return ""
+
+    # Использование parse_datetime для получения объекта datetime
+    parsed_date = parse_datetime(date_string)
+    if parsed_date is None:
+        return ""
+
+    try:
+        # Форматирование объекта datetime в строку по заданному формату
+        return parsed_date.strftime(output_format)
+    except ValueError as e:
+        # Логирование ошибки форматирования
+        logger.exception(
+            "Ошибка форматирования даты '%s' в формат '%s': %s",
+            parsed_date, output_format, e
+        )
+        return ""
+
+
+# if __name__ == "__main__":
+#     from ordered_set import OrderedSet
+#     from collections import defaultdict
+#     a = OrderedSet((1, 2, 3, 3))
+#     a.update([2, 3, 4, -10])
+#     print(a)
+#
+#     b = defaultdict(OrderedSet)
+#
+#     b["1"].update([1, 2, 1, 3, -10])
+#
+#     print(b)

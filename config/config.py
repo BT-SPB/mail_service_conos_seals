@@ -1,9 +1,13 @@
 from io import StringIO
 from pathlib import Path
+from typing import Literal
+from enum import StrEnum
 
 from dotenv import dotenv_values
 from cryptography.fernet import Fernet
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from src.models.enums import Environment
 
 
 class Config(BaseSettings):
@@ -20,11 +24,11 @@ class Config(BaseSettings):
     Args:
         CONFIG_DIR (Path): Путь к директории конфигурации, вычисляется как родительская директория текущего файла
         WORK_DIR (Path): Рабочая директория проекта, по умолчанию корень проекта
-        IN_FOLDER (Path | None): Входная папка для обработки файлов
-        OUT_OCR_FOLDER (Path | None): Папка для результатов OCR
-        SUCCESS_FOLDER (Path | None): Папка для успешно обработанных файлов
-        ERROR_FOLDER (Path | None): Папка для файлов с ошибками
-        LOG_FOLDER (Path | None): Папка для хранения логов
+        INPUT_DIR (Path | None): Входная папка для обработки файлов
+        OUTPUT_DIR (Path | None): Папка для результатов OCR
+        SUCCESS_DIR (Path | None): Папка для успешно обработанных файлов
+        ERROR_DIR (Path | None): Папка для файлов с ошибками
+        LOG_DIR (Path | None): Папка для хранения логов
         email_address (str | None): Email-адрес для приема сообщений и отправки уведомлений
         email_password (str | None): Пароль для email-аккаунта
         user_1c (str | None): Имя пользователя для системы 1C
@@ -36,14 +40,25 @@ class Config(BaseSettings):
         notification_emails (list[str]): Список email-адресов для уведомлений
         enable_email_notification (bool): # Флаг для блокировки отправки ЛЮБЫХ email-уведомлений
         enable_success_notifications (bool): Флаг отправки уведомлений об успешной обработке
-        enable_send_production_data (bool): Флаг для включения отправки номеров пломб и файлов коносаментов в ЦУП
+        enable_send_data_to_tsup (bool): Флаг для включения отправки номеров пломб и файлов коносаментов в ЦУП
         valid_images (set[str]): Допустимые расширения файлов изображений
         valid_ext (set[str]): Допустимые расширения всех файлов (включая PDF)
     """
-    # Путь к директории конфигурации, вычисляется как родительская директория текущего файла
+    # Режим работы проекта из перечисления Environment
+    environment: Environment = Environment.PROD
+
+    # --- Базовые пути ---
     CONFIG_DIR: Path = Path(__file__).parent
-    # Абсолютный путь к корню проекта
     PROJECT_DIR: Path = CONFIG_DIR.parent
+    WORK_DIR: Path = PROJECT_DIR / "FILES"
+
+    # --- Пути к поддиректориям ---
+    INPUT_DIR: Path | None = None
+    OUTPUT_DIR: Path | None = None
+    SUCCESS_DIR: Path | None = None
+    ERROR_DIR: Path | None = None
+    LOG_DIR: Path | None = None
+    BACKUP_LOG_DIR: Path | None = PROJECT_DIR / "logs"
 
     # Загрузка переменных окружения из файла config.env
     model_config = SettingsConfigDict(
@@ -52,17 +67,8 @@ class Config(BaseSettings):
         extra="ignore"  # Игнорировать неизвестные переменные в .env
     )
 
-    # Путь к рабочей директории, по умолчанию - корень проекта
-    WORK_DIR: Path = PROJECT_DIR / "FILES"
-
+    # Имя проекта
     project_name: str = PROJECT_DIR.name
-
-    # Пути к рабочим директориям, инициализируются как None
-    IN_FOLDER: Path | None = None
-    OUT_OCR_FOLDER: Path | None = None
-    SUCCESS_FOLDER: Path | None = None
-    ERROR_FOLDER: Path | None = None
-    LOG_FOLDER: Path | None = None
 
     # Учетные данные для email и 1C
     email_address: str | None = None
@@ -83,6 +89,8 @@ class Config(BaseSettings):
         "aby@sdrzbt.ru",  # Быстрова Арина
     ]
 
+    enable_tracing: bool = True
+
     # Глобальный флаг для включения отправки email-уведомлений
     enable_email_notification: bool = True
 
@@ -92,7 +100,12 @@ class Config(BaseSettings):
     enable_success_notifications: bool = True
 
     # Флаг для включения отправки номеров пломб и файлов коносаментов в ЦУП
-    enable_send_production_data: bool = False
+    enable_send_data_to_tsup: bool = False
+
+    # Блокировка перемещения обработанных файлов в выходные директории (удобно для тестов)
+    block_processed_files_to_output: bool = False
+
+    tsup_datetime_format: str = "%d.%m.%Y %H:%M:%S"
 
     # Допустимые расширения файлов для обработки
     valid_images: set = {".png", ".jpg", ".jpeg"}
@@ -137,30 +150,36 @@ class Config(BaseSettings):
             print(f"Ошибка при расшифровке: {e}")
 
     def dir_init(self) -> None:
-        """Инициализирует рабочие директории.
+        """Создаёт все необходимые директории проекта.
 
-        Для каждого поля создаётся папка:
-        - Если путь указан явно — используется он.
-        - Если None — берётся WORK_DIR + вложенные имена.
-        Атрибуты обновляются до конечных путей.
+        Логика:
+        - Если в subdir_map указано значение (tuple) → строим путь от WORK_DIR.
+        - Если значение None → используем путь из конфига (если задан).
+        - В обоих случаях — гарантируем существование директории.
         """
-        dir_map: dict[str, tuple[str, ...]] = {
-            "IN_FOLDER": ("WORKFLOW", "IN"),
-            "OUT_OCR_FOLDER": ("WORKFLOW", "OUT_OCR"),
-            "LOG_FOLDER": ("WORKFLOW", "logs"),
-            "SUCCESS_FOLDER": ("WORKFLOW", "SUCCESS"),
-            "ERROR_FOLDER": ("ERROR",),
+        subdir_map: dict[str, tuple[str, ...]] = {
+            "INPUT_DIR": ("input",),
+            "OUTPUT_DIR": ("output",),
+            "SUCCESS_DIR": ("success",),
+            "ERROR_DIR": ("error",),
+            "LOG_DIR": ("logs",),
+            "BACKUP_LOG_DIR": None,
         }
 
-        for attr, names in dir_map.items():
-            current = getattr(self, attr)
-            if current is None:
-                path = self.WORK_DIR.joinpath(*names)
-            else:
-                path = Path(current)
+        for attr, subdirs in subdir_map.items():
+            current_value = getattr(self, attr)
 
-            path.mkdir(parents=True, exist_ok=True)
-            setattr(self, attr, path)
+            # Вычисляем целевой путь
+            if current_value:
+                target_path = Path(current_value)
+            elif subdirs:
+                target_path = self.WORK_DIR.joinpath(*subdirs)
+            else:
+                continue  # ни текущего значения, ни подпапок → пропускаем
+
+            # Создаём директорию и сохраняем путь
+            target_path.mkdir(parents=True, exist_ok=True)
+            setattr(self, attr, target_path)
 
     def model_post_init(self, context: object = None) -> None:
         """
@@ -168,6 +187,7 @@ class Config(BaseSettings):
         """
         # Выполнение загрузки зашифрованных настроек
         self.load_encrypted_settings()
+        # Инициализация директорий
         self.dir_init()
 
     def display_config(self) -> str:

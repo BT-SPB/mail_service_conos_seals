@@ -1,15 +1,8 @@
-__*/
-__*
-
-CSVs/
-
-# Игнорировать каталоги и файлы конфигурации PyCharm
-.idea/
-*.iml
-
-# Игнорировать файлы, сгенерированные системой операционной системы
-.DS_Store
-Thumbs.db
+# Игнорировать Python кэш и временные каталоги
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
 # Игнорировать виртуальные окружения
 venv/
@@ -17,46 +10,82 @@ ENV/
 env/
 .venv/
 *.env
+.env.*
 
+# Игнорировать ключи и конфиденциальные файлы
 *.key
+*.pem
+*.crt
 
-# Игнорировать файлы, скомпилированные Python
-*.pyc
-*.pyo
-*.pyd
-__pycache__/
-
-# Игнорировать логи
-*.log
-
-# Игнорировать файлы данных
+# Игнорировать каталоги с данными и временные файлы проекта
+FILES/
+files/
+state/
+test/
+examples/
+other/
+logs/
+*.log*
+*.sqlite
 *.sqlite3
 *.db
+*.csv
+*.bak
+*.tmp
 
-# Игнорировать файлы, сгенерированные тестовыми инструментами
+# Игнорировать выходные файлы build/packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Игнорировать файлы конфигурации IDE
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+*.sublime-project
+*.idea_modules/
+
+# Игнорировать файлы, связанные с Jupyter Notebook
+.ipynb_checkpoints/
+
+# Игнорировать системные файлы
+.DS_Store
+Thumbs.db
+
+# Игнорировать файлы тестовых инструментов
 .coverage
 *.cover
 *.py,cover
 .hypothesis/
 .pytest_cache/
 
-# Игнорировать выходные файлы из build процессов
-build/
-dist/
-*.egg-info/
-.eggs/
-
-# Игнорировать файлы, связанные с Jupyter Notebook
-.ipynb_checkpoints/
-
-# Игнорировать конфигурационные файлы IDE других разработчиков
-.vscode/
-*.code-workspace
-
-# Игнорировать файлы, связанные с контейнерами Docker
+# Игнорировать файлы Docker
 docker-compose.override.yml
+docker-compose.prod.yml
 .docker/
+*.dockerignore
+
+# Игнорировать файлы данных и документы
+*.json
+*.yaml
+*.yml
+*.html
+*.txt
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.exe
+*.pkl
+chromedriver/
 
 # Исключения
 !.gitignore
+!README.md
+!LICENSE
 !__init__.py
+!__main__.py
+
+# Специфические исключения для проекта

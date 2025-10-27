@@ -1,5 +1,16 @@
 from enum import StrEnum
 
+
+class Environment(StrEnum):
+    """Режим работы проекта"""
+    # Только мониторинг почты
+    TEST_EMAIL = "test_email"
+    # Только мониторинг директории OUTPUT_DIR
+    TEST_DIR = "test_dir"
+    # полный функционал
+    PROD = "prod"
+
+
 class DocType(StrEnum):
     BILL_OF_LADING = "КС"
     DU = "ДУ_base"

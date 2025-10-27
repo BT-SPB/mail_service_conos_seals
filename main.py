@@ -7,8 +7,9 @@ from src.logger import setup_logging
 from src.process_email_inbox import EmailMonitor
 from src.process_output_ocr import process_output_ocr
 from src.folder_watcher import FolderWatcher
+from src.models.enums import Environment
 
-setup_logging(config.LOG_FOLDER, "rates_mail")
+setup_logging()
 logger = logging.getLogger(__name__)
 
 def main() -> None:
@@ -35,13 +36,8 @@ def main() -> None:
 
     # Инициализация FolderWatcher с callback для обработки OCR-результатов
     folder_watcher = FolderWatcher(
-        folder_path=config.OUT_OCR_FOLDER,
-        callback=lambda: process_output_ocr(
-            email_user=config.email_address,
-            email_pass=config.email_password,
-            smtp_server=config.smtp_server,
-            smtp_port=config.smtp_port,
-        )
+        folder_path=config.OUTPUT_DIR,
+        callback=lambda: process_output_ocr()
     )
 
     # Создаем потоки для каждого монитора
@@ -171,12 +167,7 @@ def test_email_monitor() -> None:
     logger.info("Запущен изолированный мониторинг почты (тестовый режим)")
 
     # Инициализируем EmailMonitor
-    email_monitor = EmailMonitor(
-        email_user=config.email_address,
-        email_pass=config.email_password,
-        imap_server=config.imap_server,
-        imap_port=config.imap_port
-    )
+    email_monitor = EmailMonitor()
 
     try:
         # Запускаем мониторинг почты
@@ -194,7 +185,7 @@ def test_folder_monitor() -> None:
     """Запускает изолированный мониторинг папок для тестирования и отладки.
 
     Инициализирует экземпляр FolderWatcher для отслеживания изменений в папке
-    CONFIG.OUT_OCR_FOLDER и вызывает callback-функцию process_output_ocr при событиях
+    config.OUTPUT_DIR и вызывает callback-функцию process_output_ocr при событиях
     или периодически. Логирует конфигурацию и ключевые события (запуск, ошибки, завершение).
     Предназначена для проверки работы модуля мониторинга папок независимо от мониторинга
     почты. Обрабатывает ошибки наблюдателя и прерывания пользователем (Ctrl+C) для
@@ -216,13 +207,8 @@ def test_folder_monitor() -> None:
 
     # Создаем наблюдатель с передачей callback-функции для OCR-обработки
     watcher = FolderWatcher(
-        folder_path=config.OUT_OCR_FOLDER,
-        callback=lambda: process_output_ocr(
-            email_user=config.email_address,
-            email_pass=config.email_password,
-            smtp_server=config.smtp_server,
-            smtp_port=config.smtp_port,
-        )
+        folder_path=config.OUTPUT_DIR,
+        callback=lambda: process_output_ocr()
     )
 
     try:
@@ -238,7 +224,12 @@ def test_folder_monitor() -> None:
 
 
 if __name__ == "__main__":
-    main()  # Основной режим (оба монитора в параллельных потоках)
-    # main_fallback()  # Аварийный режим (последовательный запуск двух упрощенных модулей в бесконечном цикле)
-    # test_email_monitor()  # Тест только почты
-    # test_folder_monitor()  # Тест только папок
+    # Основной режим (оба монитора в параллельных потоках)
+    if config.environment == Environment.PROD:
+        main()
+    # Тест только почты
+    elif config.environment == Environment.TEST_EMAIL:
+        test_email_monitor()
+    # Тест только папок
+    elif config.environment == Environment.TEST_DIR:
+        test_folder_monitor()

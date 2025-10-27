@@ -149,28 +149,40 @@ class TelegramHandler(logging.Handler):
 
 
 def setup_logging(
-        log_dir: Path | str,
-        log_name: str,
+        log_dir: Path | str = config.LOG_DIR,
+        backup_log_dir: Path | str | None = config.BACKUP_LOG_DIR,
+        file_log_name: str = config.project_name,
         max_log_size: int = 10 * 1024 * 1024,  # 10 mb
         backup_count: int = 20,
         file_level: int = logging.INFO,
         console_level: int = logging.INFO,
         enable_telegram_notification: bool = config.enable_tg_alert_notification,
 ):
-    """Настройка логгирования для всего проекта.
+    """Настройка логирования для всего проекта.
+
+    Создаёт:
+      - основной файл логов в log_dir;
+      - резервный файл логов в backup_log_dir (если указан);
+      - вывод логов в консоль;
+      - опциональные уведомления в Telegram.
 
     Args:
-        log_dir: Путь к директории для логов (строка или объект Path)
-        log_name: Имя файла логов (без расширения)
+        log_dir: Путь к основной директории для логов (строка или Path)
+        backup_log_dir: Путь к резервной директории для логов (строка, Path или None)
+        file_log_name: Имя файла логов (без расширения)
         max_log_size: Максимальный размер файла логов в байтах
         backup_count: Количество резервных копий лог-файлов
-        file_level: Уровень логирования для основного файла
+        file_level: Уровень логирования для файлов
         console_level: Уровень логирования для консоли
-        enable_telegram_notification: Включение уведомлений в Telegram.
+        enable_telegram_notification: Включение уведомлений в Telegram
     """
-    # Форматтер для унифицированного вывода логов.
+    # Приведение путей к Path
+    log_dir = Path(log_dir)
+    backup_log_dir = Path(backup_log_dir) if backup_log_dir else None
+
+    # Единый формат вывода логов
     formatter = logging.Formatter(
-        fmt="[{asctime}] {levelname:8} {name}:{lineno} | {message}",
+        fmt="[{asctime}] {levelname:8} {name}:{lineno:<3} | {message}",
         datefmt="%Y-%m-%d %H:%M:%S",
         style="{"
     )
@@ -179,31 +191,44 @@ def setup_logging(
     # Установка минимального уровня для root-логгера.
     root_logger.setLevel(min(file_level, console_level))
 
-    # Очистка существующих хендлеров для избежания дубликатов.
+    # Очистка старых хендлеров (чтобы избежать дублирования при повторной инициализации)
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
 
-    # Настройка консольного хендлера.
+    # --- Консольный хендлер ---
     console_handler = logging.StreamHandler()
     console_handler.setLevel(console_level)
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
 
-    # Создание директории и настройка ротационного файлового хендлера.
-    log_dir = Path(log_dir)
+    # --- Основной файловый хендлер ---
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / f"{log_name}.log"
-    file_handler = RotatingFileHandler(
-        filename=log_file,
+    main_log_file = log_dir / f"{file_log_name}.log"
+    main_file_handler = RotatingFileHandler(
+        filename=main_log_file,
         maxBytes=max_log_size,
         backupCount=backup_count,
         encoding="utf-8"
     )
-    file_handler.setLevel(file_level)
-    file_handler.setFormatter(formatter)
-    root_logger.addHandler(file_handler)
+    main_file_handler.setLevel(file_level)
+    main_file_handler.setFormatter(formatter)
+    root_logger.addHandler(main_file_handler)
 
-    # Добавление Telegram-хендлера, если включено.
+    # --- Резервный файловый хендлер (при необходимости) ---
+    if backup_log_dir:
+        backup_log_dir.mkdir(parents=True, exist_ok=True)
+        backup_log_file = backup_log_dir / "app.log"
+        backup_file_handler = RotatingFileHandler(
+            filename=backup_log_file,
+            maxBytes=max_log_size,
+            backupCount=backup_count,
+            encoding="utf-8"
+        )
+        backup_file_handler.setLevel(file_level)
+        backup_file_handler.setFormatter(formatter)
+        root_logger.addHandler(backup_file_handler)
+
+    # --- Telegram-хендлер (если включено) ---
     if enable_telegram_notification:
         tg_handler = TelegramHandler()
         tg_handler.setFormatter(formatter)
