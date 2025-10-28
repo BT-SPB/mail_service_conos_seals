@@ -101,7 +101,7 @@ def process_unseen_email_inbox(server: IMAPClient) -> None:
                         warning_message = (
                             f"Неподдерживаемое расширение. Допустимые: {valid_ext_text}."
                         )
-                        metadata.errors[file_name] = [warning_message]
+                        metadata.errors[file_name].add(warning_message)
                         logger.warning(f"❌ {warning_message}")
                         continue
 
@@ -151,8 +151,8 @@ class EmailMonitor:
             imap_server: str = config.imap_server,
             imap_port: int = config.imap_port,
             idle_timeout: int = 10,
-            forced_timeout: int = 20,
-            idle_cycle_max: int = 1200,
+            forced_timeout: int = 25,
+            reconnect_timeout: int = 1500,
     ) -> None:
         """
         Инициализирует мониторинг с параметрами IMAP-соединения.
@@ -164,7 +164,7 @@ class EmailMonitor:
             imap_port: Порт
             idle_timeout: Время ожидания внутри IDLE (сек)
             forced_timeout: Период полной проверки писем (сек)
-            idle_cycle_max: Макс. длительность одной IDLE-сессии (сек)
+            reconnect_timeout: Макс. длительность одной IDLE-сессии (сек)
         """
         self.email_user = email_user
         self.email_pass = email_pass
@@ -172,7 +172,7 @@ class EmailMonitor:
         self.imap_port = imap_port
         self.idle_timeout = idle_timeout
         self.forced_timeout = forced_timeout
-        self.idle_cycle_max = idle_cycle_max
+        self.reconnect_timeout = reconnect_timeout
 
         # Инициализация состояния мониторинга
         self.running: bool = False
@@ -255,20 +255,20 @@ class EmailMonitor:
         1. Подключается к IMAP-серверу.
         2. Выполняет принудительную проверку писем каждые forced_timeout секунд.
         3. Слушает события через IDLE и проверяет письма при поступлении уведомлений.
-        4. Периодически перезапускает IDLE-сессию по idle_cycle_max.
+        4. Периодически перезапускает сессию по reconnect_timeout.
         5. При любых ошибках выполняет безопасное переподключение и продолжает мониторинг.
 
         Работает до вызова stop().
         """
         self.running = True
         last_check = 0
-        idle_start = time.time()
+        last_reconnect = time.time()
 
         try:
             self.connect()
             logger.info(
                 f"🔄 Старт мониторинга (idle={self.idle_timeout}s, "
-                f"forced={self.forced_timeout}s, idle_max={self.idle_cycle_max}s)"
+                f"forced={self.forced_timeout}s, reconnect={self.reconnect_timeout}s)"
             )
 
             while self.running:
@@ -280,11 +280,11 @@ class EmailMonitor:
                         process_unseen_email_inbox(self.server)
                         last_check = time.time()
 
-                    # Перезапуск IDLE-сессии по истечении цикла каждые idle_cycle_max
-                    if time.time() - idle_start >= self.idle_cycle_max:
+                    # Перезапуск сессии по истечении цикла каждые reconnect_timeout
+                    if time.time() - last_reconnect >= self.reconnect_timeout:
                         logger.debug("🔄 Перезапуск сессии")
                         self.reconnect()
-                        idle_start = time.time()
+                        last_reconnect = time.time()
                         continue
 
                     # Входим в режим IDLE — ожидание новых писем от сервера
@@ -295,10 +295,10 @@ class EmailMonitor:
                     try:
                         self.server.idle_done()
                     except ssl.SSLEOFError:
-                        logger.warning("⚠️ Сервер закрыл SSL-соединение (SSLEOFError)")
+                        logger.debug("⚠️ Сервер закрыл SSL-соединение (SSLEOFError)")
                         raise
                     except Exception as e:
-                        logger.warning(f"⚠️ Ошибка при завершении IDLE: {e}")
+                        logger.debug(f"⚠️ Ошибка при завершении IDLE: {e}")
                         raise
                     finally:
                         # Если есть новые события, инициируем повторную проверку
