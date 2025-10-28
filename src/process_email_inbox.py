@@ -150,7 +150,7 @@ class EmailMonitor:
             email_pass: str = config.email_password,
             imap_server: str = config.imap_server,
             imap_port: int = config.imap_port,
-            idle_timeout: int = 30,
+            idle_timeout: int = 10,
             forced_timeout: int = 120,
             idle_cycle_max: int = 1200,
     ) -> None:
@@ -289,6 +289,7 @@ class EmailMonitor:
                     # Входим в режим IDLE — ожидание новых писем от сервера
                     self.server.idle()
                     responses = self.server.idle_check(timeout=self.idle_timeout)
+                    logger.info("responses: %s", responses)
 
                     try:
                         self.server.idle_done()
