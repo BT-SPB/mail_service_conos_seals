@@ -151,7 +151,7 @@ class EmailMonitor:
             imap_server: str = config.imap_server,
             imap_port: int = config.imap_port,
             idle_timeout: int = 10,
-            forced_timeout: int = 120,
+            forced_timeout: int = 20,
             idle_cycle_max: int = 1200,
     ) -> None:
         """
@@ -267,7 +267,8 @@ class EmailMonitor:
         try:
             self.connect()
             logger.info(
-                f"🔄 Старт мониторинга (forced={self.forced_timeout}s, idle_max={self.idle_cycle_max}s)"
+                f"🔄 Старт мониторинга (idle={self.idle_timeout}s, "
+                f"forced={self.forced_timeout}s, idle_max={self.idle_cycle_max}s)"
             )
 
             while self.running:
@@ -289,7 +290,7 @@ class EmailMonitor:
                     # Входим в режим IDLE — ожидание новых писем от сервера
                     self.server.idle()
                     responses = self.server.idle_check(timeout=self.idle_timeout)
-                    logger.info("responses: %s", responses)
+                    logger.debug("responses: %s", responses)
 
                     try:
                         self.server.idle_done()
@@ -302,7 +303,7 @@ class EmailMonitor:
                     finally:
                         # Если есть новые события, инициируем повторную проверку
                         if responses:
-                            logger.info(f"🔔 IDLE уведомления ({time.time() - idle_start:.2f}s): {responses}")
+                            logger.info(f"🔔 IDLE уведомления: {responses}")
                             process_unseen_email_inbox(self.server)
                             last_check = time.time()
 
