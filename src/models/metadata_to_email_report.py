@@ -90,7 +90,6 @@ CSS_STYLE = f"""
     }}
     .stat-label {{
         font-size: 12px;
-        color: #666666;
         text-transform: uppercase;
     }}
     
@@ -167,12 +166,13 @@ def render_stat_cell_html(
     style_attr = f'style=" background-color:{background_color};"' if background_color else ""
     number_color = color if count > 0 else "#999999"
     number_font_weight = "bold" if count > 0 else "normal"
+    label_color = "#666666" if count > 0 else "#999999"
 
     return f"""
     <td class="stat-cell" align="center" valign="top"{style_attr}>
         <p class="stat-icon" style="color:{color};">{icon}</p>
         <p class="stat-number" style="color:{number_color};font-weight:{number_font_weight};">{count}</p>
-        <p class="stat-label">{label}</p>
+        <p class="stat-label", style="color:{label_color}">{label}</p>
     </td>
     """
 
