@@ -150,7 +150,7 @@ class EmailMonitor:
             email_pass: str = config.email_password,
             imap_server: str = config.imap_server,
             imap_port: int = config.imap_port,
-            idle_timeout: int = 10,
+            idle_timeout: int = 30,
             forced_timeout: int = 120,
             idle_cycle_max: int = 1200,
     ) -> None:
@@ -212,7 +212,7 @@ class EmailMonitor:
         try:
             self.server.idle_done()
         except Exception as e:
-            logger.warning(f"⚠️ Неудачное завершение IDLE: {e}")
+            logger.debug(f"⚠️ Неудачное завершение IDLE: {e}")
 
         try:
             self.server.logout()
@@ -232,8 +232,7 @@ class EmailMonitor:
         logger.debug(f"🔄 Переподключение к IMAP-серверу (пауза {timeout}s)")
         self.disconnect()
         if self.running:
-            if timeout > 0:
-                time.sleep(timeout)
+            if timeout > 0: time.sleep(timeout)
             self.connect()
 
     def stop(self) -> None:
@@ -250,11 +249,16 @@ class EmailMonitor:
 
     def monitor(self) -> None:
         """
-        Запускает постоянный мониторинг почты, используя режим IDLE и периодическую проверку.
+        Запускает постоянный мониторинг почты, используя режим IMAP IDLE и периодическую проверку.
 
-        Производит начальную проверку писем, затем в цикле ожидает новых писем через IDLE.
-        Периодически выполняется ручная проверка писем на случай потери IDLE-событий.
-        При возникновении ошибок выполняется переподключение.
+        Алгоритм:
+        1. Подключается к IMAP-серверу.
+        2. Выполняет принудительную проверку писем каждые forced_timeout секунд.
+        3. Слушает события через IDLE и проверяет письма при поступлении уведомлений.
+        4. Периодически перезапускает IDLE-сессию по idle_cycle_max.
+        5. При любых ошибках выполняет безопасное переподключение и продолжает мониторинг.
+
+        Работает до вызова stop().
         """
         self.running = True
         last_check = 0
@@ -275,9 +279,9 @@ class EmailMonitor:
                         process_unseen_email_inbox(self.server)
                         last_check = time.time()
 
-                    # Перезапуск IDLE каждые idle_cycle_max
+                    # Перезапуск IDLE-сессии по истечении цикла каждые idle_cycle_max
                     if time.time() - idle_start >= self.idle_cycle_max:
-                        logger.debug("🔄 Перезапуск IDLE-сессии")
+                        logger.debug("🔄 Перезапуск сессии")
                         self.reconnect()
                         idle_start = time.time()
                         continue
@@ -297,7 +301,7 @@ class EmailMonitor:
                     finally:
                         # Если есть новые события, инициируем повторную проверку
                         if responses:
-                            logger.debug(f"🔔 IDLE уведомления: {responses}")
+                            logger.info(f"🔔 IDLE уведомления ({time.time() - idle_start:.2f}s): {responses}")
                             process_unseen_email_inbox(self.server)
                             last_check = time.time()
 
