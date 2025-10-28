@@ -150,8 +150,8 @@ class EmailMonitor:
             email_pass: str = config.email_password,
             imap_server: str = config.imap_server,
             imap_port: int = config.imap_port,
-            idle_timeout: int = 15,
-            forced_timeout: int = 300,
+            idle_timeout: int = 10,
+            forced_timeout: int = 120,
             idle_cycle_max: int = 1200,
     ) -> None:
         """
