@@ -2,10 +2,10 @@ import re
 import logging
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Callable, Any
+from typing import Callable, Any, Iterable
 
 from pydantic import Field, field_validator
-from ordered_set import OrderedSet
+# from ordered_set import OrderedSet
 
 from src.utils import file_to_base64
 from src.models.mixin import StorableModel, OrderedSetType
@@ -126,7 +126,7 @@ class Container(StorableModel):
 
         # Добавляем пломбы, если они есть
         if self.seals:
-            result += f" - [{', '.join(self.seals)}]"
+            result += f" - [{', '.join(str(seal) for seal in self.seals)}]"
 
         # Добавляем дату выгрузки, если указана
         if self.upload_datetime:
@@ -137,6 +137,33 @@ class Container(StorableModel):
             result += f" - <b>{self.note}</b>"
 
         return result
+
+    @staticmethod
+    def format_containers_section(containers: Iterable["Container"] | None) -> str:
+        """Форматирует список контейнеров в текстовый формат.
+
+        Args:
+            containers: Итерабельный объект с контейнерами или None.
+
+        Returns:
+            str: Отформатированная строка с описаниями контейнеров или пустая строка,
+                если контейнеры отсутствуют.
+        """
+        # Проверяем, существует ли итерабельный объект и содержит ли он элементы.
+        if not containers:
+            return ""
+
+        # Фильтруем только экземпляры класса Container
+        containers = [
+            cont for cont in containers
+            if isinstance(cont, Container)
+        ]
+
+        # Формируем строку с отступом в 2 пробела и маркером '•' для каждого контейнера.
+        return "\n".join(
+            f"  • {cont.format_report()}"
+            for cont in containers
+        )
 
     def to_tsup_dict(self) -> dict[str, Any]:
         """Готовит словарь данных контейнера для отправки в ЦУП.
@@ -319,7 +346,7 @@ class StructuredDocument(StorableModel):
             FieldConfig("voyage_number"),
             FieldConfig("transaction_numbers"),
             FieldConfig("containers",
-                        transform=lambda containers: "\n".join(f"{' ' * 2}• {c.format_report()}" for c in containers),
+                        transform=lambda containers: Container.format_containers_section(containers),
                         html_tag=lambda x: f"\n{x}"
                         ),
             # FieldConfig("errors",
@@ -430,34 +457,33 @@ class StructuredDocument(StorableModel):
 
         return result
 
-
-if __name__ == "__main__":
-    doc = StructuredDocument.load(
-        r"C:\Users\Cherdantsev\Desktop\Новая папка (2)\MDTRLS2510085.pdf.json"
-    )
-    # doc.file_path = r"C:\Users\Cherdantsev\Desktop\Новая папка (2)\КС_SILMUN25236300.pdf"
-
-    # print(doc.file_path)
-    # print(type(doc.file_path))
-
-    # print(doc.model_dump_json(indent=4))
-    # print(doc)
-    # print("\n\n")
-
-    # doc.errors.append("test")
-    #
-    # doc.errors.append(
-    #     f"Номер транзакции из ЦУП отсутствует. "
-    #     f"Возможно, номер коносамента ({doc.bill_of_lading}) "
-    #     f"распознан неверно."
-    # )
-    #
-    # # doc = StructuredDocument()
-    #
-    # print(doc.format_report())
-    # print("\n\n")
-    # import json
-    #
-    # print(json.dumps(doc.to_tsup_dict(), indent=4, ensure_ascii=False))
-
-    print(doc.errors)
+# if __name__ == "__main__":
+#     doc = StructuredDocument.load(
+#         r"C:\Users\Cherdantsev\Desktop\Новая папка (2)\MDTRLS2510085.pdf.json"
+#     )
+#     # doc.file_path = r"C:\Users\Cherdantsev\Desktop\Новая папка (2)\КС_SILMUN25236300.pdf"
+#
+#     # print(doc.file_path)
+#     # print(type(doc.file_path))
+#
+#     # print(doc.model_dump_json(indent=4))
+#     # print(doc)
+#     # print("\n\n")
+#
+#     # doc.errors.append("test")
+#     #
+#     # doc.errors.append(
+#     #     f"Номер транзакции из ЦУП отсутствует. "
+#     #     f"Возможно, номер коносамента ({doc.bill_of_lading}) "
+#     #     f"распознан неверно."
+#     # )
+#     #
+#     # # doc = StructuredDocument()
+#     #
+#     # print(doc.format_report())
+#     # print("\n\n")
+#     # import json
+#     #
+#     # print(json.dumps(doc.to_tsup_dict(), indent=4, ensure_ascii=False))
+#
+#     print(doc.errors)

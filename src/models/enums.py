@@ -7,6 +7,8 @@ class Environment(StrEnum):
     TEST_EMAIL = "test_email"
     # Только мониторинг директории OUTPUT_DIR
     TEST_DIR = "test_dir"
+    # Тест всего функционала
+    TEST = "test"
     # полный функционал
     PROD = "prod"
 

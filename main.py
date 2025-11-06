@@ -27,17 +27,12 @@ def main() -> None:
     logger.info(config.display_config())
 
     # Инициализация EmailMonitor
-    email_monitor = EmailMonitor(
-        email_user=config.email_address,
-        email_pass=config.email_password,
-        imap_server=config.imap_server,
-        imap_port=config.imap_port
-    )
+    email_monitor = EmailMonitor()
 
     # Инициализация FolderWatcher с callback для обработки OCR-результатов
     folder_watcher = FolderWatcher(
         folder_path=config.OUTPUT_DIR,
-        callback=lambda: process_output_ocr()
+        callback=process_output_ocr
     )
 
     # Создаем потоки для каждого монитора
@@ -208,7 +203,7 @@ def test_folder_monitor() -> None:
     # Создаем наблюдатель с передачей callback-функции для OCR-обработки
     watcher = FolderWatcher(
         folder_path=config.OUTPUT_DIR,
-        callback=lambda: process_output_ocr()
+        callback=process_output_ocr
     )
 
     try:
@@ -225,7 +220,7 @@ def test_folder_monitor() -> None:
 
 if __name__ == "__main__":
     # Основной режим (оба монитора в параллельных потоках)
-    if config.environment == Environment.PROD:
+    if config.environment in (Environment.PROD, Environment.TEST):
         main()
     # Тест только почты
     elif config.environment == Environment.TEST_EMAIL:

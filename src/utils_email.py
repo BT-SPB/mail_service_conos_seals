@@ -6,8 +6,7 @@ import chardet
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Literal
-from collections.abc import Sequence
+from typing import Literal, Sequence
 from zoneinfo import ZoneInfo
 
 from email import encoders
@@ -268,7 +267,7 @@ def _normalize_recipients(recipient_emails: str | Sequence[str]) -> list[str]:
         items = [x.strip() for x in raw if x and x.strip()]
     elif isinstance(recipient_emails, Sequence):
         # Приводим все элементы к строкам и чистим пробелы.
-        items = [str(x).strip() for x in recipient_emails if str(x).strip()]
+        items = [str(x).strip() for x in recipient_emails if x and str(x).strip()]
     else:
         # Теоретически сюда не попадём из-за аннотаций, но добавим безопасный фолбэк.
         return []

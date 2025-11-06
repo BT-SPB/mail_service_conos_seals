@@ -14,9 +14,9 @@ from src.utils import (
 from src.utils_tsup import tsup_http_request, send_data_to_tsup
 from src.utils_email import send_email
 from src.utils_data_process import fetch_transaction_numbers, correct_container_numbers
-from src.models.enums import DocType
+from src.models.enums import DocType, Environment
 from src.models.metadata_model import StructuredMetadata
-from src.models.document_model import StructuredDocument
+from src.models.document_model import StructuredDocument, Container
 
 logger = logging.getLogger(__name__)
 
@@ -148,15 +148,14 @@ def process_output_ocr() -> None:
                 # кроме ДУ от теринала НМТП, в котором пломб не предусмотрено
                 if document.document_type != DocType.DU_NMTP:
                     # Определяем контейнеры с пустыми номерами пломб
-                    containers_with_empty_seals: set[str] = {
-                        cont.container for cont in document.containers
+                    containers_empty_seals: list[Container] = [
+                        cont for cont in document.containers
                         if not cont.seals
-                    }
+                    ]
 
                     # Если все контейнеры имеют пустые пломбы
-                    if len(containers_with_empty_seals) == len(document.containers):
-                        error_message = (f"Номера пломб отсутствуют для всех контейнеров: "
-                                         f"{', '.join(containers_with_empty_seals)}.")
+                    if len(containers_empty_seals) == len(document.containers):
+                        error_message = f"Номера пломб отсутствуют для всех контейнеров."
                         logger.warning(f"⚠️ {error_message} ({json_path})")
                         document.errors.add(error_message)
                         document.save(json_path)
@@ -165,15 +164,15 @@ def process_output_ocr() -> None:
                         continue
 
                     # Если есть контейнеры с пустыми пломбами, логируем частичную ошибку
-                    if containers_with_empty_seals:
-                        error_message = (f"Номера пломб отсутствуют для части контейнеров: "
-                                         f"{', '.join(containers_with_empty_seals)}.")
+                    if containers_empty_seals:
+                        error_message = (f"Номера пломб отсутствуют для части контейнеров:\n"
+                                         f"{Container.format_containers_section(containers_empty_seals)}")
                         logger.warning(f"⚠️ {error_message} ({json_path})")
                         document.errors.add(error_message)
                         # Удаляем контейнеры с пустым полем "seals"
                         document.containers = [
                             cont for cont in document.containers
-                            if cont.container not in containers_with_empty_seals
+                            if cont.seals
                         ]
 
                 # Запрашиваем номер транзакции из ЦУП по коносаменту
@@ -182,7 +181,7 @@ def process_output_ocr() -> None:
                 # Проверяем, получены ли номера транзакций
                 if not document.transaction_numbers:
                     error_message = (
-                        f"Номер транзакции из ЦУП отсутствует. "
+                        f"Номер сделки в ЦУП отсутствует.\n"
                         f"Возможно, номер коносамента ({document.bill_of_lading}) "
                         f"распознан неверно."
                     )
@@ -208,8 +207,8 @@ def process_output_ocr() -> None:
                 # Проверяем, получены ли номера контейнеров
                 if not any(container_numbers_cup):
                     error_message = (
-                        f"Номера контейнеров по номеру сделки ({document.transaction_numbers}) "
-                        f"из ЦУП отсутствуют."
+                        f"Отсутствуют номера контейнеров по номеру сделки: "
+                        f"{', '.join(document.transaction_numbers)} "
                     )
                     logger.warning(f"⚠️ {error_message} ({source_file_path})")
                     document.errors.add(error_message)
@@ -230,11 +229,11 @@ def process_output_ocr() -> None:
                 container_numbers_ocr_set: set[str] = {cont.container for cont in document.containers}
 
                 # Проверяем, есть ли совпадения между наборами номеров
-                if not container_numbers_cup_set & container_numbers_ocr_set:
+                if not (container_numbers_cup_set & container_numbers_ocr_set):
                     error_message = (
-                        f"Номера контейнеров из OCR ({', '.join(container_numbers_ocr_set)}) "
-                        f"не совпадают с номерами из ЦУП ({', '.join(container_numbers_cup_set)}) "
-                        f"по номеру сделки {document.transaction_numbers}."
+                        f"Распознанные номера контейнеров не совпадают с данными ЦУП "
+                        f"в сделке {', '.join(document.transaction_numbers)}.\n"
+                        f"Ожидались номера: {', '.join(sorted(container_numbers_cup_set))}"
                     )
                     logger.warning(f"⚠️ {error_message} ({source_file_path})")
                     document.errors.add(error_message)
@@ -244,19 +243,24 @@ def process_output_ocr() -> None:
                     continue
 
                 # Проверяем наличие контейнеров, которые были распознаны, но отсутствуют в ЦУП
-                missing_containers: set[str] = container_numbers_ocr_set - container_numbers_cup_set
-                if missing_containers:
+                missing_containers_set: set[str] = container_numbers_ocr_set - container_numbers_cup_set
+                if missing_containers_set:
                     # Отправляем сообщение, но не прерываем цикл, так как
                     # некоторые контейнеры были успешно распознаны
+                    missing_containers: list[Container] = [
+                        cont for cont in document.containers
+                        if cont.container in missing_containers_set
+                    ]
                     error_message = (
-                        f"Некоторые из распознанных номеров контейнеров ({', '.join(missing_containers)}) "
-                        f"отсутствуют в данных ЦУП по номеру сделки {document.transaction_numbers}."
+                        f"В сделке {', '.join(document.transaction_numbers)} "
+                        f"не найдены следующие номера контейнеров (возможно, распознаны с ошибками):\n"
+                        f"{Container.format_containers_section(missing_containers)}"
                     )
                     logger.warning(f"⚠️ {error_message} ({source_file_path})")
                     document.errors.add(error_message)
                     document.containers = [
                         cont for cont in document.containers
-                        if cont.container not in missing_containers
+                        if cont.container not in missing_containers_set
                     ]
 
                 # Формируем имя файла для ЦУП и кодируем сам файл в base64 для передачи.
@@ -280,7 +284,7 @@ def process_output_ocr() -> None:
                     else:
                         error_message = (
                             f"Не удалось загрузить данные в ЦУП "
-                            f"по номеру сделки {document.transaction_numbers}"
+                            f"по номеру сделки {', '.join(document.transaction_numbers)}"
                         )
                         logger.warning(f"❌ {error_message} ({json_path})")
                         document.errors.add(error_message)
@@ -298,10 +302,10 @@ def process_output_ocr() -> None:
                 document.save(json_path)
                 if document.errors:
                     metadata.partial_successes[source_file_name].update(document.format_report_with_errors())
+                    transfer_files(files_to_transfer, error_subdir, "move")
                 else:
                     metadata.successes[source_file_name].update(document.format_report_with_errors())
-
-                transfer_files(files_to_transfer, success_subdir, "move")
+                    transfer_files(files_to_transfer, success_subdir, "move")
 
                 # Добавляем в список все примечания для контейнеров
                 container_notes.extend(cont.note for cont in document.containers if cont.note)
@@ -321,9 +325,14 @@ def process_output_ocr() -> None:
                         (f" + {', '.join(container_notes)}" if container_notes else "")
                 )
 
+                if config.environment == Environment.PROD:
+                    recipient_emails = config.notification_emails + [metadata.sender]
+                else:
+                    recipient_emails = config.notification_emails
+
                 send_email(
                     email_text=email_text,
-                    recipient_emails=config.notification_emails,
+                    recipient_emails=recipient_emails,
                     subject=subject,
                     email_format="html",
                 )
@@ -334,7 +343,7 @@ def process_output_ocr() -> None:
             else:
                 # Копируем metadata.json в error_subdir, если есть ошибки или частичные успехи
                 if metadata.errors or metadata.partial_successes:
-                    transfer_files(metadata_path, error_subdir, "copy2")
+                    transfer_files(metadata_path, error_subdir, "copy2" if metadata.successes else "move")
                     write_text(error_subdir / "email_data.html", email_text)
 
                 # Перемещаем metadata.json в success_subdir, если есть успехи
