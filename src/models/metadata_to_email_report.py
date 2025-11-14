@@ -164,7 +164,7 @@ def render_stat_cell_html(
         background_color: str | None = None,
 ) -> str:
     """Формирует HTML-блок (ячейку статистики) для вставки в отчёт."""
-    style_attr = f'style=" background-color:{background_color};"' if background_color else ""
+    style_attr = f' style=" background-color:{background_color};"' if background_color else ""
     number_color = color if count > 0 else "#999999"
     number_font_weight = "bold" if count > 0 else "normal"
     label_color = "#666666" if count > 0 else "#999999"
@@ -173,7 +173,7 @@ def render_stat_cell_html(
     <td class="stat-cell" align="center" valign="top"{style_attr}>
         <p class="stat-icon" style="color:{color};">{icon}</p>
         <p class="stat-number" style="color:{number_color};font-weight:{number_font_weight};">{count}</p>
-        <p class="stat-label", style="color:{label_color}">{label}</p>
+        <p class="stat-label" style="color:{label_color}">{label}</p>
     </td>
     """
 
@@ -257,7 +257,7 @@ def _formatted_dict(data: defaultdict[str, Iterable[str]]) -> str:
                     <tr><td class="file_header">📄&nbsp;&nbsp;{_escape(filename)}</td></tr>
                     {msg_list}
                 </table>
-            </tr></td>
+            </td></tr>
             <!-- End file -->\n
             """
         )
