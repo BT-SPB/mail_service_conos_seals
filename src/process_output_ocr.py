@@ -181,7 +181,7 @@ def process_output_ocr() -> None:
                 # Проверяем, получены ли номера транзакций
                 if not document.transaction_numbers:
                     error_message = (
-                        f"Номер сделки в ЦУП отсутствует.\n"
+                        f"Номер сделки в ЦУП отсутствует. "
                         f"Возможно, номер коносамента ({document.bill_of_lading}) "
                         f"распознан неверно."
                     )

@@ -139,6 +139,7 @@ CSS_STYLE = f"""
     }}
     code {{
         background-color: #e9ecef; 
+        word-break: break-all;
     }}
     
     /* Подвал */
@@ -243,7 +244,7 @@ def _formatted_dict(data: defaultdict[str, Iterable[str]]) -> str:
 
     items = []
     for filename, messages in data.items():
-        msg_list = "".join(
+        msg_list = "\n".join(
             f"""<tr><td class="file_content"><pre>{msg}</pre></td></tr>"""
             for msg in messages
         )
@@ -254,9 +255,9 @@ def _formatted_dict(data: defaultdict[str, Iterable[str]]) -> str:
             <tr><td>
                 <table role="presentation" class="file_card">
                     <tr><td class="file_header">📄&nbsp;&nbsp;{_escape(filename)}</td></tr>
-                        {msg_list}
+                    {msg_list}
                 </table>
-            <tr><td>
+            </tr></td>
             <!-- End file -->\n
             """
         )

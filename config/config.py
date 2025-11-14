@@ -1,7 +1,6 @@
 from io import StringIO
 from pathlib import Path
-from typing import Literal
-from enum import StrEnum
+from typing import Any
 
 from dotenv import dotenv_values
 from cryptography.fernet import Fernet
@@ -181,7 +180,7 @@ class Config(BaseSettings):
             target_path.mkdir(parents=True, exist_ok=True)
             setattr(self, attr, target_path)
 
-    def model_post_init(self, context: object = None) -> None:
+    def model_post_init(self, context: Any) -> None:
         """
         Метод вызывается автоматически после инициализации модели Pydantic.
         """
@@ -205,6 +204,7 @@ class Config(BaseSettings):
 
         # Исключение конфиденциальных полей из вывода
         config_dict = self.model_dump(
+            mode="json",
             exclude={
                 "user_1c", "password_1c", "email_password",
                 "tg_alert_token", "tg_alert_chat_id",

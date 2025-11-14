@@ -56,7 +56,6 @@ class StructuredMetadata(StorableModel):
         description="Путь до директории для успешно обработанных файлов."
     )
 
-
     def email_report(self) -> str:
         return metadata_to_email_report(self)
 

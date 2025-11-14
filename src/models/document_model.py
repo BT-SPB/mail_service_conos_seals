@@ -423,13 +423,13 @@ class StructuredDocument(StorableModel):
         # Поля для экспорта в ЦУП
         fields: tuple[FieldConfig, ...] = (
             FieldConfig("bill_of_lading"),
-            FieldConfig("document_type", transform=lambda x: "true" if str(x).startswith("КС") else "false"),
+            # FieldConfig("document_type", transform=lambda x: "true" if str(x).startswith("КС") else "false"),
             FieldConfig("transaction_numbers"),
             FieldConfig("document_created_datetime"),
             FieldConfig("voyage_number"),
             FieldConfig("containers", transform=lambda x: [cont.to_tsup_dict() for cont in x]),
-            FieldConfig("source_file_name"),
-            FieldConfig("source_file_base64"),
+            # FieldConfig("source_file_name"),
+            # FieldConfig("source_file_base64"),
         )
 
         result: dict[str, Any] = {}
@@ -454,6 +454,16 @@ class StructuredDocument(StorableModel):
             schema_extra = self.__class__.model_fields[field_name].json_schema_extra
             tsup_title = schema_extra.get("tsup_title") or field_name if schema_extra else field_name
             result[tsup_title] = value
+
+        # Добавление файлов
+        is_bol: bool = self.document_type.value.startswith("КС")
+
+        result["files"] = [{
+            "name": self.source_file_name,
+            "base64": self.source_file_base64,
+            "ТипДокумента": "Коносамент фидерный" if is_bol else "",
+            "ЭтоКоносамент": "true" if is_bol else "false"
+        }]
 
         return result
 
